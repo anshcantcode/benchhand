@@ -462,5 +462,65 @@ mod tests {
         let input = Enigo::new(&Settings::default()).unwrap();
         let (x, y) = input.location().unwrap();
         assert!(x > 0 && y > 0);
+        let result =
+            std::env::temp_dir().join(format!("teammate-native-input-{}", uuid::Uuid::new_v4()));
+        let mut terminal = std::process::Command::new("xterm")
+            .args([
+                "-title",
+                "Teammate native fixture",
+                "-geometry",
+                "80x24+0+0",
+                "-e",
+                "sh",
+                "-c",
+                "IFS= read -r line; printf '%s' \"$line\" > \"$1\"",
+                "sh",
+            ])
+            .arg(&result)
+            .spawn()
+            .expect("Install xterm and xdotool for the isolated input check");
+        let mut window = String::new();
+        for _ in 0..40 {
+            let output = std::process::Command::new("xdotool")
+                .args(["search", "--pid", &terminal.id().to_string()])
+                .output()
+                .unwrap();
+            if output.status.success() {
+                window = String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .into();
+                if !window.is_empty() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(!window.is_empty());
+        assert!(std::process::Command::new("xdotool")
+            .args(["windowfocus", "--sync", &window])
+            .status()
+            .unwrap()
+            .success());
+        native(
+            "computer_type",
+            &json!({"text":"Native Linux input verified"}),
+            || Ok(()),
+        )
+        .unwrap();
+        native("computer_key", &json!({"keys":"ENTER"}), || Ok(())).unwrap();
+        for _ in 0..40 {
+            if result.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let contents = std::fs::read_to_string(&result).unwrap();
+        let _ = terminal.kill();
+        let _ = terminal.wait();
+        std::fs::remove_file(result).unwrap();
+        assert_eq!(contents, "Native Linux input verified");
     }
 }

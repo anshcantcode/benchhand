@@ -319,6 +319,7 @@ kbd {
   display: flex;
   flex-direction: column;
   z-index: 4;
+  overflow-y: auto;
 }
 .brand {
   display: flex;

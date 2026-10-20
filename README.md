@@ -102,6 +102,8 @@ Optional live checks are ignored by default. `TEAMMATE_TEST_GITHUB_TOKEN` enable
 
 After a Windows release build, `npm run test:native` launches the real WebView2 desktop app in an isolated temporary workspace. It checks setup, Rust IPC, a file write, exact approvals, MCP calls, automatic scheduling, parent/child delegation, signed catalogs, stdio installation and update, managed installation of a real npm package, and native screen capture plus keyboard and pointer input in an editor created inside the isolated test app. It does not require a paid model key or change your normal workspace.
 
+[Detailed validation and platform limits](docs/VALIDATION.md).
+
 ### Storage
 
 The default location is the OS application data directory for `dev.localteam.teammate`. To choose a different local workspace, set `TEAMMATE_DATA_DIR` to an absolute directory before launching. This changes the database and file workspace location; credentials remain in the OS credential store.
