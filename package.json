@@ -1,0 +1,15 @@
+{
+  "name": "teammate-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:windows": "tauri build --bundles nsis",
+    "build:linux": "tauri build --bundles deb,appimage"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

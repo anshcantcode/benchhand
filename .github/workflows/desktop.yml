@@ -1,0 +1,58 @@
+name: Desktop packages
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            os: windows-latest
+            build_script: build:windows
+          - platform: linux-x64
+            os: ubuntu-22.04
+            build_script: build:linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            wget
+
+      - run: npm ci
+
+      - name: Build desktop packages
+        run: npm run ${{ matrix.build_script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teammate-${{ matrix.platform }}
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: error
