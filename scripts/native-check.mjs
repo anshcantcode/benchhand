@@ -127,7 +127,8 @@ const app = spawn(
     env: {
       ...process.env,
       TEAMMATE_DATA_DIR: directory,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort}`,
+    WEBVIEW2_USER_DATA_FOLDER: resolve(directory, 'webview'),
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort} --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`,
     },
     stdio: "ignore",
   },
@@ -143,7 +144,7 @@ try {
           return false;
         }
       },
-      { timeout: 20000 },
+      { timeout: 60000 },
     )
     .toBe(true);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);

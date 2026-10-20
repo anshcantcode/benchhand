@@ -620,15 +620,8 @@ function openSheet(html, wide = false) {
   sheet.innerHTML = html;
   if (!sheet.open) sheet.showModal();
   colors(sheet);
-  setTimeout(
-    () =>
-      sheet
-        .querySelector(
-          "input:not([type=hidden]):not([type=color]),textarea,button",
-        )
-        ?.focus(),
-    30,
-  );
+  const firstInput = sheet.querySelector("input:not([type=hidden]):not([type=color]),textarea");
+  (firstInput || sheet.querySelector("button"))?.focus();
 }
 function closeSheet() {
   sheet.close();

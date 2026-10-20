@@ -102,6 +102,8 @@ Rust checks cover settings, migrations, credential storage, endpoint validation,
 
 Optional live checks are ignored by default. `TEAMMATE_TEST_GITHUB_TOKEN` enables the GitHub read-only check; `TEAMMATE_TEST_MCP_URL` plus a local preview enables the browser check. Never put credentials in source or shell history.
 
+After a Windows release build, `npm run test:native` launches the real WebView2 desktop app in an isolated temporary workspace. It checks setup, Rust IPC, model discovery, a file write, exact approval, an MCP call, and the saved result using a deterministic local HTTP fixture. It does not require a paid model key or change your normal workspace.
+
 ### Storage
 
 The default location is the OS application data directory for `dev.localteam.teammate`. To choose a different local workspace, set `TEAMMATE_DATA_DIR` to an absolute directory before launching. This changes the database and file workspace location; credentials remain in the OS credential store.

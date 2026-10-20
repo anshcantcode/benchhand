@@ -469,6 +469,8 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
     page.locator(".teammate-card").filter({ hasText: "Nova" }),
   ).toBeVisible();
   await page.keyboard.press("Control+k");
+  await page.waitForTimeout(100);
+  await expect(page.getByRole('textbox',{name:'Command search'})).toBeFocused();
   await page
     .getByRole("textbox", { name: "Command search" })
     .fill("Preferences");
