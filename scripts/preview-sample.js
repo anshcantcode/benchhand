@@ -40,9 +40,9 @@
       { id: "pw", kind: "mcp", label: "Browser · Playwright", account: "localhost:8931 · 21 tools", verifiedAt: ago(800), config: { baseUrl: "http://localhost:8931/mcp", hasSecret: false } },
     ],
     approvals: [
-      { id: "a1", taskId: "t-status", title: "Send Slack message", target: "#product-design", summary: "Relay wants to post the weekly status (6 merged pull requests, 2 open risks).", status: "pending", createdAt: ago(9), toolName: "slack_send", arguments: { channel: "C04PRODUCT", text: "Weekly status: 6 PRs merged, tray mode shipped. Risks: Wayland tray crash, registry pagination." } },
-      { id: "a2", taskId: "t-issue", title: "Create GitHub issue", target: "anshcantcode/teammate", summary: "Forge wants to open a bug with reproduction steps.", status: "pending", createdAt: ago(22), toolName: "github_create_issue", arguments: { repository: "anshcantcode/teammate", title: "Tray icon crashes on GNOME Wayland", labels: ["bug", "linux"] } },
-      { id: "a0", taskId: "t-plan", title: "Write plan.md", target: "Atlas workspace", summary: "", status: "approved", createdAt: ago(305), toolName: "write_file", arguments: {} },
+      { id: "a1", taskId: "t-status", title: "Send a Slack message", target: "Design studio", summary: "Relay wants to post the weekly status (6 merged pull requests, 2 open risks).", status: "pending", createdAt: ago(9), toolName: "slack_send", arguments: { channel: "C04PRODUCT", text: "Weekly status: 6 PRs merged, tray mode shipped. Risks: Wayland tray crash, registry pagination." } },
+      { id: "a2", taskId: "t-issue", title: "Create a GitHub issue", target: "GitHub", summary: "Forge wants to open a bug with reproduction steps.", status: "pending", createdAt: ago(22), toolName: "github_create_issue", arguments: { repository: "anshcantcode/teammate", title: "Tray icon crashes on GNOME Wayland", body: "**Steps to reproduce**\n\n1. Start Teammate on Ubuntu 24.04 with GNOME on Wayland.\n2. Turn on *Keep working in the tray*.\n3. Close the window.\n\n**Expected:** the tray icon stays and routines keep running.\n**Actual:** the app exits with `Gdk-CRITICAL` in the log.\n\nReported 3 times: #41, #47, #52." } },
+      { id: "a0", taskId: "t-plan", title: "Write plan.md", target: "Atlas workspace", edited: true, summary: "", status: "approved", createdAt: ago(305), toolName: "write_file", arguments: {} },
     ],
     schedules: [
       { id: "s1", name: "Morning research brief", botId: "research", title: "Morning research brief", description: "", enabled: true, nextRunAt: now + 15 * 3600, config: { kind: "daily", time: "09:00", timezone: "Asia/Kolkata", missed: "run_once" } },
@@ -54,18 +54,23 @@
     ],
     pluginSources: [{ id: "featured", label: "Featured tools" }, { id: "registry", label: "Official MCP Registry" }],
     downloads: [{ id: "d1", model: "llama3.2:3b", state: "downloading", status: "Pulling model layers", completed: 1240000000, total: 2020000000 }],
-    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.3.0" },
+    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.3.1" },
   };
-  const events = [
-    { message: "Task created", createdAt: ago(14) }, { message: "Listed 23 open issues in anshcantcode/teammate", createdAt: ago(13) },
-    { message: "Grouped issues into 6 themes", createdAt: ago(9) }, { message: "Delegated “Find duplicate reports of the Wayland tray crash” to Scout", createdAt: ago(6) },
-    { message: "Waiting for Scout’s result", createdAt: ago(0.5) },
-  ];
+  // Event text matches what the runtime records, so the Steps list is derived the same way as in the app.
+  const run = (start, ...lines) => [{ message: "Task created", createdAt: ago(start + 0.2) }, { message: "Run started", createdAt: ago(start) }, ...lines.map(([m, at]) => ({ message: m, createdAt: ago(at) }))];
+  const events = {
+    "t-triage": run(14, ["Thinking · step 1 of 12", 13.8], ["Running: GitHub · Read open issues", 13.5], ["Tool completed: GitHub · Read open issues", 13], ["Thinking · step 2 of 12", 12.8], ["Running: Save workspace file", 9.2], ["Tool completed: Save workspace file", 9], ["Thinking · step 3 of 12", 8], ["Running: Delegate work", 6.1], ["Waiting for delegated work", 6]),
+    "t-status": run(41, ["Thinking · step 1 of 12", 40.8], ["Running: Design studio · Read recent messages", 40], ["Tool completed: Design studio · Read recent messages", 39.5], ["Thinking · step 2 of 12", 39], ["Running: GitHub · Read open issues", 30], ["Tool completed: GitHub · Read open issues", 29.5], ["Thinking · step 3 of 12", 12], ["Waiting for your approval", 9]),
+    "t-issue": run(55, ["Thinking · step 1 of 12", 54.8], ["Running: GitHub · Read open issues", 54], ["Tool completed: GitHub · Read open issues", 53], ["Thinking · step 2 of 12", 30], ["Waiting for your approval", 22]),
+    "t-plan": run(320, ["Thinking · step 1 of 12", 319], ["Running: Browse workspace files", 318], ["Tool completed: Browse workspace files", 318], ["Thinking · step 2 of 12", 312], ["Waiting for your approval", 305], ["Resuming after your decision", 304], ["You edited the inputs before approving", 304], ["Running: Save workspace file", 304], ["Tool completed: Save workspace file", 303.8], ["Thinking · step 3 of 12", 303], ["Task completed", 301]),
+    "t-support": run(190, ["Thinking · step 1 of 12", 189.8], ["Running: Design studio · Read recent messages", 189], ["Tool reported an error: Design studio · Read recent messages", 188.8], ["Thinking · step 2 of 12", 188], ["Run stopped: Slack returned not_in_channel for #support.", 186]),
+  };
   const clone = (v) => JSON.parse(JSON.stringify(v));
   window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: async (c, a = {}) => {
     switch (c) {
       case "bootstrap": return clone(state);
-      case "task_events": return clone(events);
+      case "task_events": { const t = state.tasks.find((t) => t.id === a.taskId); const m = (now - (t?.createdAt || now)) / 60; return clone(events[a.taskId] || (t?.status === "completed" ? run(m, ["Thinking · step 1 of 12", m - 0.5], ["Task completed", m - 3]) : [{ message: "Task created", createdAt: t?.createdAt || now }])); }
+      case "decide_approval": { const x = state.approvals.find((x) => x.id === a.approvalId); Object.assign(x, { status: a.decision, edited: !!a.arguments }, a.arguments ? { arguments: a.arguments } : {}); const t = state.tasks.find((t) => t.id === x.taskId); Object.assign(t, { waitingApproval: false, status: "running" }); return null; }
       case "autostart_status": return { enabled: true, desktop: { tray: true, emergencyShortcut: true } };
       case "local_models": return { models: [{ name: "qwen3:8b", size: 5200000000, details: { parameter_size: "8.2B", quantization_level: "Q4_K_M" } }, { name: "llava:7b", size: 4700000000, details: { parameter_size: "7B", quantization_level: "Q4_0" } }] };
       case "marketplace_search": return { entries: [

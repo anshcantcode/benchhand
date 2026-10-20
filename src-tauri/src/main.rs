@@ -93,6 +93,7 @@ struct Approval {
     created_at: i64,
     tool_name: String,
     arguments: Value,
+    edited: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -231,6 +232,7 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
         ("tasks", "budget_remaining", "INTEGER NOT NULL DEFAULT 60"),
         ("approvals", "tool_name", "TEXT NOT NULL DEFAULT ''"),
         ("approvals", "arguments", "TEXT NOT NULL DEFAULT '{}'"),
+        ("approvals", "edited", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         let mut stmt = db
             .prepare(&format!("PRAGMA table_info({table})"))
@@ -389,7 +391,7 @@ fn connection_secret(connection: &Connection) -> Result<String, String> {
 #[tauri::command]
 fn bootstrap(state: State<'_, AppState>) -> Result<Value, String> {
     let db = state.lock()?;
-    let mut stmt=db.prepare("SELECT id,task_id,title,target,summary,status,created_at,tool_name,arguments FROM approvals ORDER BY created_at DESC LIMIT 100").map_err(db_error)?;
+    let mut stmt=db.prepare("SELECT id,task_id,title,target,summary,status,created_at,tool_name,arguments,edited FROM approvals ORDER BY created_at DESC LIMIT 100").map_err(db_error)?;
     let approvals = stmt
         .query_map([], |r| {
             Ok(Approval {
@@ -402,6 +404,7 @@ fn bootstrap(state: State<'_, AppState>) -> Result<Value, String> {
                 created_at: r.get(6)?,
                 tool_name: r.get(7)?,
                 arguments: serde_json::from_str(&r.get::<_, String>(8)?).unwrap_or(json!({})),
+                edited: r.get::<_, i64>(9)? != 0,
             })
         })
         .map_err(db_error)?
@@ -606,27 +609,41 @@ fn cancel_task(task_id: String, app: tauri::AppHandle) -> Result<(), String> {
 fn decide_approval(
     approval_id: String,
     decision: String,
+    arguments: Option<Value>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     if !["approved", "rejected"].contains(&decision.as_str()) {
         return Err("Choose approve or reject".into());
     }
     let state = app.state::<AppState>();
-    let task_id: String = state
+    let (task_id, tool_name, original): (String, String, String) = state
         .lock()?
         .query_row(
-            "SELECT task_id FROM approvals WHERE id=?1 AND status='pending'",
+            "SELECT task_id,tool_name,arguments FROM approvals WHERE id=?1 AND status='pending'",
             [&approval_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()
         .map_err(db_error)?
         .ok_or("This approval is no longer pending")?;
+    // An edit replaces the stored proposal, so the approved inputs are exactly what runs.
+    let edited = match arguments {
+        Some(edited) if decision == "approved" => {
+            let original = serde_json::from_str::<Value>(&original).unwrap_or(json!({}));
+            let edited = agent::edited_arguments(&original, &edited)?;
+            if tool_name.starts_with("computer_") {
+                computer::validate(&tool_name, &edited)?;
+            }
+            (edited != original).then_some(edited)
+        }
+        Some(_) => return Err("Only an approved action can be edited".into()),
+        None => None,
+    };
     let changed = state
         .lock()?
         .execute(
-            "UPDATE approvals SET status=?2 WHERE id=?1 AND status='pending'",
-            params![approval_id, decision],
+            "UPDATE approvals SET status=?2,arguments=COALESCE(?3,arguments),edited=?3 IS NOT NULL WHERE id=?1 AND status='pending'",
+            params![approval_id, decision, edited.as_ref().map(Value::to_string)],
         )
         .map_err(db_error)?;
     if changed == 0 {
@@ -637,8 +654,8 @@ fn decide_approval(
         state
             .lock()?
             .execute(
-                "UPDATE approvals SET status='pending' WHERE id=?1",
-                [approval_id],
+                "UPDATE approvals SET status='pending',arguments=?2,edited=0 WHERE id=?1",
+                params![approval_id, original],
             )
             .map_err(db_error)?;
         return Err(error);

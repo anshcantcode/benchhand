@@ -1,5 +1,6 @@
 const paths = {
   home: "M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9",
+  edit: "M4 20h4L19 9l-4-4L4 16v4ZM14 6l4 4",
   tasks: "M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01",
   team: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.9M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
   connections:
@@ -70,6 +71,8 @@ let data = {
   page = "home",
   selectedTask = "",
   events = [],
+  editingApproval = "",
+  approvalDraft = {},
   taskFilter = "all",
   taskSearch = "",
   connectionFilter = "all",
@@ -453,6 +456,81 @@ function tasksView() {
           "",
         )}</div><label class="search-field">${icon("search")}<input id="task-search" type="search" value="${esc(taskSearch)}" placeholder="Find a task" aria-label="Search tasks"></label></div><div id="task-list" class="task-list">${filteredTasks()}</div>`;
 }
+const stamp = (ts) =>
+  new Date(ts * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+// Steps are read from the run's own events, so the list only shows work that happened.
+function taskSteps(t) {
+  const decisions = data.approvals
+      .filter((a) => a.taskId === t.id)
+      .sort((x, y) => x.createdAt - y.createdAt),
+    open = (steps, ...states) => steps.findLast((s) => states.includes(s.state));
+  let steps = [],
+    asked = 0;
+  for (const e of events) {
+    const m = e.message,
+      at = e.createdAt;
+    let r;
+    if (m === "Run started") steps = [];
+    else if ((r = m.match(/^Running: (.+)$/))) {
+      const waiting = open(steps, "approval");
+      if (waiting)
+        Object.assign(waiting, { label: r[1], state: "active", at, approved: true });
+      else steps.push({ label: r[1], state: "active", at });
+    } else if ((r = m.match(/^Tool (completed|reported an error): (.+)$/))) {
+      const step = open(steps, "active");
+      if (step)
+        Object.assign(step, { state: r[1] === "completed" ? "done" : "error", at });
+    } else if (m === "Waiting for your approval") {
+      const a = decisions[asked++];
+      steps.push({ label: a?.title || "Your approval", state: "approval", at });
+    } else if (m === "You edited the inputs before approving") {
+      const step = open(steps, "approval");
+      if (step) step.edited = true;
+    } else if (m === "Waiting for delegated work") {
+      // A delegation call stays open until the child task reports back.
+      const step = open(steps, "active");
+      if (step) Object.assign(step, { label: "Delegated work", delegated: true });
+      else steps.push({ label: "Delegated work", state: "active", at, delegated: true });
+    }
+    else if (m.startsWith("Thinking")) {
+      const step = open(steps, "approval", "active");
+      if (step?.state === "approval") Object.assign(step, { state: "rejected", at });
+      else if (step?.delegated) Object.assign(step, { state: "done", at });
+    } else if (m === "Task completed")
+      steps.push({ label: "Write the result", state: "done", at, final: true });
+    else if (m.startsWith("Run stopped")) {
+      const step = open(steps, "active");
+      if (step) Object.assign(step, { state: "error", at });
+    }
+  }
+  const live = t.status === "running" || t.waitingApproval || t.waitingChild;
+  if (t.status === "running" && !open(steps, "active", "approval"))
+    steps.push({ label: "Decide the next step", state: "active" });
+  if (live && !steps.some((s) => s.final))
+    steps.push({ label: "Write the result", state: "waiting" });
+  if (!live) for (const s of steps) if (s.state === "active") s.state = "stopped";
+  return steps;
+}
+function stepsPanel(t) {
+  const steps = taskSteps(t);
+  if (!steps.length) return "";
+  const word = {
+      done: "Done",
+      active: "Working",
+      approval: "Waiting for you",
+      error: "Error",
+      rejected: "Rejected",
+      stopped: "Stopped",
+      waiting: "Not started",
+    },
+    done = steps.filter((s) => s.state === "done").length;
+  return `<section class="panel steps-panel">${section("Steps", `${done} of ${steps.length} done`)}<ol class="steps">${steps.map((s) => `<li class="step ${s.state}"><i class="step-mark" aria-hidden="true">${s.state === "done" ? icon("check") : ""}</i><span class="step-label">${esc(s.label)}${s.edited ? "<small>Edited and approved by you</small>" : s.approved ? "<small>Approved by you</small>" : ""}</span><span class="step-state">${word[s.state]}${s.at && s.state !== "waiting" ? ` · <time class="num">${clock(s.at)}</time>` : ""}</span></li>`).join("")}</ol></section>`;
+}
 function taskDetail() {
   const t = data.tasks.find((t) => t.id === selectedTask);
   if (!t) {
@@ -460,8 +538,15 @@ function taskDetail() {
     return tasksView();
   }
   const b = data.bots.find((b) => b.id === t.botId),
-    a = pending().find((a) => a.taskId === t.id);
-  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="page-heading task-heading"><div><h1>${esc(t.title)}</h1><p>${pill(t)}<span>${avatar(b, true)} ${esc(t.botName)}</span><span>${esc(modelName(b))}</span><span>Started ${relative(t.createdAt)}</span></p></div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}${a ? approvalCard(a) : ""}${delegationDetail(t)}<div class="task-detail-grid"><section class="panel result-panel">${section(t.output ? "Result" : "Brief", "", t.output ? `<button class="icon-button" title="Copy result" aria-label="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" aria-label="Export Markdown" data-action="export-result">${icon("download")}</button>` : "")}${t.output ? `<article class="markdown">${markdown(t.output)}</article>` : t.status === "running" ? `<div class="working-state"><p><i class="status-dot live"></i><strong>${esc(t.botName)} is working</strong></p><p class="subtle">${esc(events.at(-1)?.message || "Starting the task")}</p><p class="brief-text">${esc(t.description || "")}</p></div>` : `<div class="task-brief"><p>${esc(t.description || "No additional details.")}</p>${t.status === "queued" ? '<p class="subtle">This is a draft. Run it when the brief is ready.</p>' : ""}</div>`}</section><aside class="panel activity-panel">${section("Activity", plural(events.length, "event"))}<ol class="timeline">${events.map((e, i) => `<li class="${i === events.length - 1 && t.status === "running" ? "live" : ""}"><time class="num">${clock(e.createdAt)}</time><p>${esc(e.message)}</p></li>`).join("")}</ol><p class="activity-footnote">${icon("approvals")} Sends, posts and imported tools wait for your approval.</p></aside></div>`;
+    a = pending().find((a) => a.taskId === t.id),
+    routine = (data.schedules || []).find((s) => s.id === t.scheduleId),
+    detail = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`,
+    result = t.output
+      ? `<article class="markdown">${markdown(t.output)}</article>`
+      : t.status === "running"
+        ? `<div class="working-state"><p><i class="status-dot live"></i><strong>${esc(t.botName)} is working</strong></p><p class="subtle">${esc(events.at(-1)?.message || "Starting the task")}</p></div>`
+        : `<div class="task-brief"><p class="subtle">${t.status === "queued" ? "This is a draft. Run it when the brief is ready." : "No result yet. Run the task again to produce one."}</p></div>`;
+  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="page-heading task-heading"><div><h1>${esc(t.title)}</h1><p>${pill(t)}<span>${avatar(b, true)} ${esc(t.botName)}</span><span>Started ${relative(t.createdAt)}</span></p>${t.description ? `<p class="task-description">${esc(t.description)}</p>` : ""}</div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}<div class="task-layout"><div class="task-main">${a ? approvalCard(a) : ""}${stepsPanel(t)}${delegationDetail(t)}<section class="panel result-panel">${section("Result", "", t.output ? `<button class="icon-button" title="Copy result" aria-label="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" aria-label="Export Markdown" data-action="export-result">${icon("download")}</button>` : "")}${result}</section></div><aside class="task-rail"><section class="panel">${section("Details")}<dl class="detail-list">${detail("Teammate", `<span class="detail-bot">${avatar(b, true)}<span><strong>${esc(t.botName)}</strong>${b?.role ? `<small>${esc(b.role)}</small>` : ""}</span></span>`)}${detail("Model", esc(modelName(b)))}${detail("Created", `<time class="num">${stamp(t.createdAt)}</time>`)}${detail("Updated", `<time class="num">${relative(t.updatedAt || t.createdAt)}</time>`)}${routine ? detail("Routine", esc(routine.name)) : ""}</dl></section><section class="panel activity-panel">${section("Activity", plural(events.length, "event"))}<ol class="timeline">${events.map((e, i) => `<li class="${i === events.length - 1 && t.status === "running" ? "live" : ""}"><time class="num">${clock(e.createdAt)}</time><p>${esc(e.message)}</p></li>`).join("")}</ol><p class="activity-footnote">${icon("approvals")} Sends, posts and imported tools wait for your approval.</p></section></aside></div>`;
 }
 function teamView() {
   return `${heading("Teammates", `${plural(data.bots.length, "teammate")} · each with its own model, instructions and private workspace`, button("edit-bot", "New teammate"))}<section class="panel"><div class="list-header team-header" aria-hidden="true"><span>Teammate</span><span>Model</span><span>Now</span><span class="num">Tasks</span></div>${data.bots.map(teammateCard).join("") || empty("team", "No teammates yet", "Create one and give it a role and a model.")}</section><p class="workspace-note">${icon("model")}<span>Every teammate can use the connected tools. Its model and instructions decide how it works.</span></p>`;
@@ -537,9 +622,85 @@ function connectionsView() {
       "",
     )}</div><div class="catalog-list">${cards.map((c) => `<article class="catalog-card">${icon(c.ic)}<div class="catalog-text"><h3>${c.name}</h3><p>${c.desc}</p><small>${c.tag} · ${c.sub}</small></div><button class="button secondary" data-action="connect-catalog" data-kind="${c.kind}" data-preset="${c.id === "local" ? "ollama" : c.id === "cloud" ? "openai" : ""}">${icon("plus")} Connect ${c.kind === "model" ? "a model" : c.kind === "mcp" ? "a server" : c.name}</button></article>`).join("")}</div></section>`;
 }
+const fieldName = (k) =>
+  String(k)
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase());
+const argText = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+function computerSentence(tool, x) {
+  const at = (px, py) => `${px}, ${py}`,
+    on = x.displayId !== undefined ? ` on display ${x.displayId}` : "";
+  return (
+    {
+      computer_click: () =>
+        `${x.count === 2 ? "Double-click" : "Click"}${x.button && x.button !== "left" ? ` the ${x.button} button` : ""} at ${at(x.x, x.y)}${on}`,
+      computer_move: () => `Move the pointer to ${at(x.x, x.y)}${on}`,
+      computer_drag: () => `Drag from ${at(x.x, x.y)} to ${at(x.toX, x.toY)}${on}`,
+      computer_type: () => `Type “${x.text}” into the focused control`,
+      computer_key: () => `Press ${x.keys}`,
+      computer_scroll: () => `Scroll ${x.direction} by ${plural(x.steps, "step")}`,
+    }[tool]?.() || "Use this computer"
+  );
+}
+// A readable view of the proposed action. The exact inputs stay one click away.
+function approvalPreview(a) {
+  const x = a.arguments || {},
+    tool = a.toolName || "",
+    field = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  if (/^slack_send/.test(tool))
+    return `<div class="action-preview"><dl class="preview-fields">${field("Channel", `<code>${esc(argText(x.channel))}</code>`)}</dl><p class="preview-message">${esc(argText(x.text))}</p></div>`;
+  if (/^github_create_issue/.test(tool))
+    return `<div class="action-preview"><dl class="preview-fields">${field("Repository", `<code>${esc(argText(x.repository))}</code>`)}${field("Title", `<strong>${esc(argText(x.title))}</strong>`)}</dl><article class="markdown preview-message">${markdown(argText(x.body))}</article></div>`;
+  if (tool.startsWith("computer_"))
+    return `<div class="action-preview"><p class="preview-sentence">${esc(computerSentence(tool, x))}</p><p class="helper">Positions run from 0 to 1000 across the display.</p></div>`;
+  const entries = Object.entries(x);
+  return `<div class="action-preview"><dl class="preview-fields">${tool ? field("Tool", `<code>${esc(tool)}</code>`) : ""}${entries.map(([k, v]) => field(esc(fieldName(k)), `<span class="preview-value">${esc(argText(v))}</span>`)).join("") || field("Inputs", "None")}</dl></div>`;
+}
+function approvalEditor(a) {
+  return `<div class="approval-editor">${Object.entries(a.arguments || {})
+    .map(([k, v], i) => {
+      // The control follows the original value's type, and drafts keep typing across refreshes.
+      const draft = approvalDraft[k],
+        attrs = `id="approval-arg-${i}" data-arg="${esc(k)}"`,
+        label = esc(fieldName(k));
+      if (typeof v === "boolean")
+        return `<label class="toggle-field"><input type="checkbox" ${attrs} data-type="boolean" ${(draft ?? v) ? "checked" : ""}><span>${label}</span></label>`;
+      if (typeof v === "number")
+        return `<label class="field"><span>${label}</span><input type="number" step="any" ${attrs} data-type="number" value="${esc(draft ?? v)}"></label>`;
+      if (typeof v === "string" && v.length < 70 && !v.includes("\n"))
+        return `<label class="field"><span>${label}</span><input ${attrs} data-type="string" value="${esc(draft ?? v)}"></label>`;
+      const text = draft ?? (typeof v === "string" ? v : JSON.stringify(v, null, 2));
+      return `<label class="field"><span>${label}${typeof v === "string" ? "" : " (JSON)"}</span><textarea ${attrs} data-type="${typeof v === "string" ? "string" : "json"}" rows="${Math.min(14, Math.max(4, text.split("\n").length + 1))}">${esc(text)}</textarea></label>`;
+    })
+    .join("")}<p class="helper">You can change values but not add or remove fields. The edited inputs are what runs.</p><div class="form-error" role="alert" hidden></div></div>`;
+}
+function editedArguments(card, a) {
+  const out = { ...a.arguments };
+  for (const el of card.querySelectorAll("[data-arg]")) {
+    const k = el.dataset.arg,
+      type = el.dataset.type;
+    if (type === "boolean") out[k] = el.checked;
+    else if (type === "number") {
+      const n = Number(el.value);
+      if (el.value.trim() === "" || !Number.isFinite(n))
+        throw new Error(`${fieldName(k)} must be a number.`);
+      out[k] = n;
+    } else if (type === "json") {
+      try {
+        out[k] = JSON.parse(el.value);
+      } catch {
+        throw new Error(`${fieldName(k)} must be valid JSON.`);
+      }
+    } else out[k] = el.value;
+  }
+  return out;
+}
 function approvalCard(a) {
-  const t = data.tasks.find((t) => t.id === a.taskId);
-  return `<article class="approval-card"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">Needs approval</span></header>${a.summary ? `<p>${esc(a.summary)}</p>` : ""}<pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre><div class="approval-actions"><button class="button secondary" data-action="decide" data-id="${esc(a.id)}" data-decision="rejected">Reject action</button><button class="button primary" data-action="decide" data-id="${esc(a.id)}" data-decision="approved">${icon("check")} Approve & continue</button></div></article>`;
+  const t = data.tasks.find((t) => t.id === a.taskId),
+    editing = editingApproval === a.id,
+    id = `data-id="${esc(a.id)}"`;
+  return `<article class="approval-card ${editing ? "editing" : ""}"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t && t.id !== selectedTask ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">${editing ? "Editing" : "Needs approval"}</span></header>${editing ? approvalEditor(a) : `${approvalPreview(a)}<details class="raw-inputs"><summary>Exact inputs</summary><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre></details>`}<div class="approval-actions">${editing ? `<button class="button secondary" data-action="edit-approval" ${id}>Cancel edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved" data-edited="true">${icon("check")} Approve edited action</button>` : `<button class="button secondary" data-action="decide" ${id} data-decision="rejected">Reject action</button><button class="button secondary" data-action="edit-approval" ${id}>${icon("edit")} Edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved">${icon("check")} Approve & continue</button>`}</div></article>`;
 }
 function approvalsView() {
   const done = data.approvals.filter((a) => a.status !== "pending");
@@ -549,7 +710,7 @@ function approvalsView() {
           .slice(0, 10)
           .map(
             (a) =>
-              `<div class="decision-row"><strong>${esc(a.title)}</strong><span class="subtle">${esc(a.target)}</span><span class="pill ${a.status === "approved" ? "completed" : "canceled"}">${a.status === "approved" ? "Approved" : "Rejected"}</span><time class="num">${relative(a.createdAt)}</time></div>`,
+              `<div class="decision-row"><strong>${esc(a.title)}</strong><span class="subtle">${esc(a.target)}</span><span class="pill ${a.status === "approved" ? "completed" : "canceled"}">${a.status === "approved" ? (a.edited ? "Approved, edited" : "Approved") : "Rejected"}</span><time class="num">${relative(a.createdAt)}</time></div>`,
           )
           .join("")}</section>`
       : ""
@@ -1131,15 +1292,37 @@ async function handleAction(el) {
       await refresh();
       notify("Task canceled.");
       break;
-    case "decide":
+    case "edit-approval":
+      editingApproval = editingApproval === id ? "" : id;
+      approvalDraft = {};
+      render();
+      break;
+    case "decide": {
+      const card = el.closest(".approval-card"),
+        approval = data.approvals.find((a) => a.id === id);
+      let edited;
+      if (el.dataset.edited && approval) {
+        try {
+          edited = editedArguments(card, approval);
+        } catch (error) {
+          const box = card.querySelector(".form-error");
+          box.textContent = error.message;
+          box.hidden = false;
+          break;
+        }
+      }
       busy(el, true, "Recording");
       await invoke("decide_approval", {
         approvalId: id,
         decision: el.dataset.decision,
+        ...(edited ? { arguments: edited } : {}),
       });
+      editingApproval = "";
+      approvalDraft = {};
       await refresh();
       notify("Decision saved.");
       break;
+    }
     case "copy-result":
       await navigator.clipboard.writeText(
         data.tasks.find((t) => t.id === selectedTask)?.output || "",
@@ -1376,6 +1559,9 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("input", (event) => {
   const el = event.target;
   if (el.id === "home-prompt") composerDraft = el.value;
+  // Unsaved approval edits survive the live refresh while a task runs.
+  if (el.matches("[data-arg]"))
+    approvalDraft[el.dataset.arg] = el.type === "checkbox" ? el.checked : el.value;
   if (el.id === "task-search") {
     taskSearch = el.value;
     document.querySelector("#task-list").innerHTML = filteredTasks();

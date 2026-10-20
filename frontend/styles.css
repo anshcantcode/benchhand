@@ -1496,11 +1496,144 @@ input.toggle:checked::after {
   align-items: center;
   gap: 6px;
 }
-.task-detail-grid {
+.task-description {
+  display: block !important;
+  max-width: 72ch;
+  margin-top: 10px;
+  color: var(--text-2);
+}
+.task-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 20px;
   align-items: start;
+}
+.task-main,
+.task-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+.detail-list > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px var(--pad);
+}
+.detail-list dt {
+  color: var(--muted);
+}
+.detail-list dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.detail-bot {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.detail-bot > span {
+  display: flex;
+  flex-direction: column;
+}
+.detail-bot small {
+  color: var(--muted);
+}
+
+/* Steps inside a run */
+.steps {
+  padding: 6px 0;
+}
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 9px var(--pad);
+}
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--pad) + 8px);
+  top: 30px;
+  bottom: -7px;
+  width: 1px;
+  background: var(--border);
+}
+.step-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1.5px solid var(--control);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.step-mark .icon {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+}
+.step.done .step-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.step.active .step-mark {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--surface), inset 0 0 0 9px var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+.step.approval .step-mark {
+  border-color: var(--warning);
+  box-shadow: inset 0 0 0 3px var(--surface), inset 0 0 0 9px var(--warning);
+}
+.step.error .step-mark,
+.step.rejected .step-mark {
+  border-color: var(--negative);
+}
+.step.active,
+.step.approval {
+  background: var(--accent-soft);
+}
+.step.approval {
+  background: var(--warning-soft);
+}
+.step-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.step-label small {
+  color: var(--muted);
+}
+.step.waiting .step-label,
+.step.stopped .step-label {
+  color: var(--muted);
+}
+.step-state {
+  color: var(--muted);
+  font-size: 0.929rem;
+  white-space: nowrap;
+}
+.step.active .step-state {
+  color: var(--accent-ink);
+}
+.step.approval .step-state {
+  color: var(--warning);
+}
+.step.error .step-state,
+.step.rejected .step-state {
+  color: var(--negative);
 }
 .result-panel .markdown,
 .result-panel .task-brief,
@@ -1980,6 +2113,79 @@ progress::-moz-progress-bar {
 }
 .approval-actions {
   justify-content: flex-end;
+}
+.action-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.preview-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.preview-fields > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+.preview-fields dt {
+  color: var(--muted);
+}
+.preview-fields dd,
+.preview-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.preview-message {
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.markdown.preview-message {
+  white-space: normal;
+  gap: 10px;
+}
+.preview-sentence {
+  font-size: 1.071rem;
+  font-weight: 500;
+}
+.raw-inputs {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.raw-inputs summary {
+  width: max-content;
+  font-weight: 400;
+  color: var(--muted);
+  cursor: pointer;
+}
+.raw-inputs summary:hover {
+  color: var(--text);
+}
+.raw-inputs[open] summary {
+  margin-bottom: 8px;
+}
+.approval-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.approval-editor textarea {
+  resize: vertical;
+}
+.approval-card.editing {
+  border-left-color: var(--accent);
 }
 .decision-header,
 .decision-row {
@@ -2647,7 +2853,7 @@ dialog[open] {
 /* Narrower windows */
 @media (max-width: 1180px) {
   .grid.two-one,
-  .task-detail-grid {
+  .task-layout {
     grid-template-columns: minmax(0, 1fr);
   }
   .routine-header,

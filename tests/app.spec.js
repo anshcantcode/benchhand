@@ -453,7 +453,7 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
                   "canceled";
                 break;
               case "task_events":
-                return [
+                return window.fixtureEvents || [
                   { id: "1", message: "Task created", createdAt: now - 40 },
                   {
                     id: "2",
@@ -465,6 +465,10 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
               case "decide_approval": {
                 const a = state.approvals.find((a) => a.id === args.approvalId);
                 a.status = args.decision;
+                if (args.arguments) {
+                  a.arguments = args.arguments;
+                  a.edited = true;
+                }
                 const t = state.tasks.find((t) => t.id === a.taskId);
                 t.waitingApproval = false;
                 t.status = "running";
@@ -719,6 +723,88 @@ test("approvals show the exact payload and resume only the selected decision", a
     await page.evaluate(() => window.fixtureState.approvals[0].status),
   ).toBe("rejected");
   await expect(page.getByText("You’re all clear")).toBeVisible();
+});
+
+test("approvals can be edited before they run and keep the tool contract", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    const s = window.fixtureState;
+    s.tasks[0].status = "paused";
+    s.tasks[0].waitingApproval = true;
+    s.approvals.push({
+      id: "approve-edit",
+      taskId: "task-1",
+      title: "Send a Slack message",
+      target: "Design studio",
+      summary: "",
+      status: "pending",
+      createdAt: Date.now() / 1000,
+      toolName: "slack_send_0",
+      arguments: { channel: "C123", text: "Draft status <b>v1</b>" },
+    });
+  });
+  await page.evaluate(() =>
+    window.__TAURI__.core.invoke("save_settings", {
+      settings: window.fixtureState.settings,
+    }),
+  );
+  await page.reload();
+  await page
+    .locator("nav")
+    .getByRole("button", { name: /Approvals/ })
+    .click();
+  // The readable preview shows the message as text, never as markup.
+  await expect(page.locator(".preview-message")).toHaveText(
+    "Draft status <b>v1</b>",
+  );
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const text = page.getByRole("textbox", { name: "Text" });
+  await text.fill("Final status: ready for review");
+  await page.getByRole("button", { name: "Approve edited action" }).click();
+  const decided = await page.evaluate(() =>
+    window.fixtureState.approvals.find((a) => a.id === "approve-edit"),
+  );
+  expect(decided.status).toBe("approved");
+  expect(decided.arguments).toEqual({
+    channel: "C123",
+    text: "Final status: ready for review",
+  });
+});
+
+test("task steps follow the recorded run and the details rail", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    const now = Date.now() / 1000;
+    window.fixtureEvents = [
+      "Task created",
+      "Run started",
+      "Thinking · step 1 of 8",
+      "Running: Read workspace file",
+      "Tool completed: Read workspace file",
+      "Thinking · step 2 of 8",
+      "Waiting for your approval",
+      "Resuming after your decision",
+      "You edited the inputs before approving",
+      "Running: Design studio · Send message",
+      "Tool completed: Design studio · Send message",
+      "Thinking · step 3 of 8",
+      "Task completed",
+    ].map((message, i) => ({ id: String(i), message, createdAt: now - 60 + i }));
+  });
+  await page.locator("nav").getByRole("button", { name: /Tasks/ }).click();
+  await page.locator(".task-row").first().click();
+  const steps = page.locator(".steps .step");
+  await expect(steps).toHaveCount(3);
+  await expect(steps.nth(0)).toContainText("Read workspace file");
+  await expect(steps.nth(1)).toContainText("Design studio · Send message");
+  await expect(steps.nth(1)).toContainText("Edited and approved by you");
+  await expect(steps.nth(2)).toContainText("Write the result");
+  await expect(page.locator(".steps .step.done")).toHaveCount(3);
+  await expect(page.locator(".task-rail .detail-list")).toContainText("Model");
 });
 
 test("premium layouts have no horizontal overflow at desktop and small windows", async ({

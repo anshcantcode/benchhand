@@ -23,6 +23,31 @@ struct Tool {
     action: String,
     approval: bool,
 }
+/// Accepts an owner's edit of proposed tool inputs. The edit may change values but not
+/// add or remove fields or change a value's type, so the tool contract stays intact.
+pub fn edited_arguments(original: &Value, edited: &Value) -> Result<Value, String> {
+    let (Some(before), Some(after)) = (original.as_object(), edited.as_object()) else {
+        return Err("Edited inputs must be an object".into());
+    };
+    if edited.to_string().len() > 1_000_000 {
+        return Err("Edited inputs are too large".into());
+    }
+    if before.len() != after.len() || before.keys().any(|k| !after.contains_key(k)) {
+        return Err("Edited inputs must keep the same fields".into());
+    }
+    let kind = |v: &Value| match v {
+        Value::Null => 0,
+        Value::Bool(_) => 1,
+        Value::Number(_) => 2,
+        Value::String(_) => 3,
+        Value::Array(_) => 4,
+        Value::Object(_) => 5,
+    };
+    if let Some(key) = before.keys().find(|k| kind(&before[*k]) != kind(&after[*k])) {
+        return Err(format!("{key} must keep its original type"));
+    }
+    Ok(edited.clone())
+}
 fn tool_label(tool: &Tool) -> String {
     let action = match tool.action.as_str() {
         "workspace_write" => "Save workspace file",
@@ -382,24 +407,30 @@ async fn run_with(
                 .get(name)
                 .map(tool_label)
                 .unwrap_or_else(|| "Unavailable tool".into());
-            let args=serde_json::from_str::<Value>(call["function"]["arguments"].as_str().unwrap_or("{}")).map_err(|_|"The model returned invalid tool arguments. Try structured tool mode for this model.")?;
+            let mut args=serde_json::from_str::<Value>(call["function"]["arguments"].as_str().unwrap_or("{}")).map_err(|_|"The model returned invalid tool arguments. Try structured tool mode for this model.")?;
             if !args.is_object() || args.to_string().len() > 1_000_000 {
                 return Err("The model returned invalid or oversized tool arguments".into());
             }
+            let mut edited = false;
             let result = if let Some(tool) = tool_map.get(name) {
                 let mut approved = !tool.approval;
                 let mut rejected = false;
                 if !run.approval_id.is_empty() {
-                    let decision: String = state
+                    let (decision, stored, was_edited): (String, String, bool) = state
                         .lock()?
                         .query_row(
-                            "SELECT status FROM approvals WHERE id=?1 AND task_id=?2",
+                            "SELECT status,arguments,edited FROM approvals WHERE id=?1 AND task_id=?2",
                             params![run.approval_id, id],
-                            |r| r.get(0),
+                            |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)),
                         )
                         .map_err(db_error)?;
                     approved = decision == "approved";
                     rejected = decision == "rejected";
+                    if approved && was_edited {
+                        args = serde_json::from_str(&stored).map_err(db_error)?;
+                        edited = true;
+                        state.event(id, "You edited the inputs before approving")?;
+                    }
                     run.approval_id.clear();
                 }
                 if tool.approval && !approved && !rejected {
@@ -457,6 +488,9 @@ async fn run_with(
                 Ok(v) => v,
                 Err(e) => json!({"error":e}),
             };
+            if edited {
+                output = json!({"note":"Your user edited the inputs before approving. These inputs were used.","inputsUsed":args,"result":output});
+            }
             if let Some(child) = output["waitingChild"].as_str() {
                 // Consecutive delegation calls may run together; results keep their original order.
                 for other in run
@@ -620,7 +654,12 @@ mod tests {
             atomic::{AtomicUsize, Ordering},
             Mutex,
         };
-        for decision in ["approved", "rejected"] {
+        for decision in ["approved", "rejected", "edited"] {
+            let sent = if decision == "edited" {
+                "Edited message"
+            } else {
+                "Exactly this message"
+            };
             let step = AtomicUsize::new(0);
             let server = MockServer::new(move |method, path, body| {
                 if path == "/v1/chat/completions" {
@@ -638,6 +677,12 @@ mod tests {
                                 .unwrap()
                                 .iter()
                                 .any(|m| m["role"] == "tool"));
+                            if decision == "edited" {
+                                assert!(body["messages"].as_array().unwrap().iter().any(|m| {
+                                    m["role"] == "tool"
+                                        && m["content"].as_str().unwrap_or("").contains("inputsUsed")
+                                }));
+                            }
                             json!({"role":"assistant","content":"The plan is ready. The external action has been handled according to your decision."})
                         }
                     };
@@ -651,10 +696,7 @@ mod tests {
                         json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"Fixture","version":"1"}})
                     }
                     "tools/call" => {
-                        assert_eq!(
-                            body["params"]["arguments"]["message"],
-                            "Exactly this message"
-                        );
+                        assert_eq!(body["params"]["arguments"]["message"], sent);
                         json!({"content":[{"type":"text","text":"Action completed"}]})
                     }
                     _ => Value::Null,
@@ -713,7 +755,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .execute(
-                    "UPDATE approvals SET status=?2 WHERE id=?1",
+                    "UPDATE approvals SET status=CASE WHEN ?2='edited' THEN 'approved' ELSE ?2 END,arguments=CASE WHEN ?2='edited' THEN '{\"message\":\"Edited message\"}' ELSE arguments END,edited=?2='edited' WHERE id=?1",
                     params![approval_id, decision],
                 )
                 .unwrap();
@@ -734,9 +776,23 @@ mod tests {
                 .iter()
                 .filter(|v| v["method"] == "tools/call")
                 .count();
-            assert_eq!(calls, if decision == "approved" { 1 } else { 0 });
+            assert_eq!(calls, if decision == "rejected" { 0 } else { 1 });
             drop(state);
             fs::remove_dir_all(dir).unwrap();
+        }
+    }
+    #[test]
+    fn edits_keep_the_tool_contract() {
+        let original = json!({"channel":"C1","text":"Hello","count":1});
+        let changed = json!({"channel":"C1","text":"Hello, team","count":2});
+        assert_eq!(edited_arguments(&original, &changed).unwrap(), changed);
+        for bad in [
+            json!({"channel":"C1","text":"Hello"}),
+            json!({"channel":"C1","text":"Hello","count":1,"extra":true}),
+            json!({"channel":"C1","text":5,"count":1}),
+            json!(["not", "an", "object"]),
+        ] {
+            assert!(edited_arguments(&original, &bad).is_err());
         }
     }
     #[test]
