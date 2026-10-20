@@ -1,6 +1,6 @@
 # Plugins and catalogs
 
-Teammate plugins are declarative manifests. They can provide an MCP server, teammate templates, a theme, or a combination. The desktop app supports Streamable HTTP and local stdio servers. Managed npm servers are installed into a private directory with an exact package version, a lockfile, and install scripts disabled. Direct stdio commands can use Node, Python, uvx, or another executable already installed on your system.
+Benchhand plugins are declarative manifests. They can provide an MCP server, teammate templates, a theme, or a combination. The desktop app supports Streamable HTTP and local stdio servers. Managed npm servers are installed into a private directory with an exact package version, a lockfile, and install scripts disabled. Direct stdio commands can use Node, Python, uvx, or another executable already installed on your system.
 
 ## Install and manage
 

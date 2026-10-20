@@ -8,7 +8,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
       ? {
           protocolVersion: "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "Teammate test fixture", version: "1" },
+          serverInfo: { name: "Benchhand test fixture", version: "1" },
         }
       : message.method === "tools/list"
         ? {

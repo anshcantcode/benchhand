@@ -478,7 +478,7 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
                 if (args.action === "repositories")
                   return [
                     {
-                      fullName: "anshcantcode/teammate",
+                      fullName: "anshcantcode/benchhand",
                       description: "Your open workspace for AI teammates.",
                       language: "Rust",
                       openIssues: 3,
@@ -491,7 +491,7 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
                       number: 7,
                       title: "Polish the first run experience",
                       body: "Make setup feel effortless.",
-                      url: "https://github.com/anshcantcode/teammate/issues/7",
+                      url: "https://github.com/anshcantcode/benchhand/issues/7",
                     },
                   ];
                 if (args.action === "channels")
@@ -607,11 +607,11 @@ test("GitHub and Slack browse actual command results and pass context to tasks",
     .filter({ hasText: "GitHub" })
     .getByRole("button", { name: "Browse" })
     .click();
-  await page.getByRole("button", { name: /anshcantcode\/teammate/ }).click();
+  await page.getByRole("button", { name: /anshcantcode\/benchhand/ }).click();
   await expect(page.getByText("Polish the first run experience")).toBeVisible();
   await page.getByRole("button", { name: "Use in a task" }).click();
   await expect(page.locator("[name=description]")).toHaveValue(
-    /anshcantcode\/teammate/,
+    /anshcantcode\/benchhand/,
   );
   await page.getByRole("button", { name: "Close panel" }).click();
   await page

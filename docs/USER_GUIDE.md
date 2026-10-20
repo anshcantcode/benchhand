@@ -1,6 +1,6 @@
 # User guide
 
-How to set up Teammate, connect your accounts and tools, and what to expect from this release. For building from source, see the [README](../README.md#build-from-source).
+How to set up Benchhand, connect your accounts and tools, and what to expect from this release. For building from source, see the [README](../README.md#build-from-source).
 
 ## First run
 

@@ -1,10 +1,10 @@
 # Security policy
 
-Teammate runs AI models that can call tools on your computer and in your accounts. We take reports about that boundary seriously.
+Benchhand runs AI models that can call tools on your computer and in your accounts. We take reports about that boundary seriously.
 
 ## Supported versions
 
-Teammate is in early releases. Security fixes go into the latest release only.
+Benchhand is in early releases. Security fixes go into the latest release only.
 
 | Version | Supported |
 | --- | --- |
@@ -13,7 +13,7 @@ Teammate is in early releases. Security fixes go into the latest release only.
 
 ## Report a vulnerability
 
-**Do not open a public issue.** Report it privately through [GitHub's private vulnerability reporting](https://github.com/anshcantcode/teammate/security/advisories/new).
+**Do not open a public issue.** Report it privately through [GitHub's private vulnerability reporting](https://github.com/anshcantcode/benchhand/security/advisories/new).
 
 Please include:
 

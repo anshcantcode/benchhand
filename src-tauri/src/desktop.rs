@@ -15,12 +15,12 @@ pub fn stop(app: &tauri::AppHandle) {
     let _ = app.emit("workspace-updated", json!({"computerAccess":false}));
 }
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItem::with_id(app, "show", "Open Teammate", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Open Benchhand", true, None::<&str>)?;
     let stop_item = MenuItem::with_id(app, "stop", "Stop computer control", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Teammate", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Benchhand", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &stop_item, &quit])?;
     let mut tray = TrayIconBuilder::with_id("teammate")
-        .tooltip("Teammate")
+        .tooltip("Benchhand")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {

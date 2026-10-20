@@ -275,7 +275,7 @@ try{for($attempt=0;$attempt -lt 5;$attempt++){[NativeFocusCheck]::SwitchToThisWi
       `
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class NativeDesktopCheck { [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r); [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c); }';
 [NativeDesktopCheck]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null;
-$targetProcess=Get-Process -Id ${pid}; if($targetProcess.MainWindowTitle -ne 'Teammate'){throw 'Unexpected native test window'};
+$targetProcess=Get-Process -Id ${pid}; if($targetProcess.MainWindowTitle -ne 'Benchhand'){throw 'Unexpected native test window'};
 $rect=New-Object NativeDesktopCheck+Rect; [NativeDesktopCheck]::GetWindowRect($targetProcess.MainWindowHandle,[ref]$rect) | Out-Null;
 @{x=$rect.Left;y=$rect.Top;width=($rect.Right-$rect.Left);height=($rect.Bottom-$rect.Top)} | ConvertTo-Json -Compress;
 `,

@@ -43,7 +43,7 @@ pub fn executable(name: &str) -> Result<PathBuf, String> {
         }
     }
     Err(format!(
-        "Install {name} and restart Teammate so it is available on PATH"
+        "Install {name} and restart Benchhand so it is available on PATH"
     ))
 }
 impl Session {
@@ -131,7 +131,7 @@ async fn spawn(config: &Value, secret: &str) -> Result<Session, String> {
         child,
         sequence: 0,
     };
-    s.rpc("initialize",json!({"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Teammate","version":env!("CARGO_PKG_VERSION")}})).await?;
+    s.rpc("initialize",json!({"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Benchhand","version":env!("CARGO_PKG_VERSION")}})).await?;
     s.send(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
         .await?;
     Ok(s)

@@ -200,7 +200,7 @@ await new Promise((resolve) =>
 const debugPort = debugReservation.address().port;
 await new Promise((resolve) => debugReservation.close(resolve));
 const app = spawn(
-  resolve("src-tauri/target/release/teammate-desktop.exe"),
+  resolve("src-tauri/target/release/benchhand.exe"),
   [],
   {
     windowsHide: true,

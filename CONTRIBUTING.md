@@ -1,12 +1,12 @@
-# Contributing to Teammate
+# Contributing to Benchhand
 
-Thanks for helping. Teammate is a small codebase on purpose: a Rust core, a framework-free interface and a test suite you can run in under a minute. You can make a useful change in an afternoon.
+Thanks for helping. Benchhand is a small codebase on purpose: a Rust core, a framework-free interface and a test suite you can run in under a minute. You can make a useful change in an afternoon.
 
 ## Ways to help
 
-- **Report a bug** with the [bug report form](https://github.com/anshcantcode/teammate/issues/new?template=bug_report.yml). Steps to reproduce and your OS, model and version are the most useful details.
-- **Suggest a feature** with the [feature request form](https://github.com/anshcantcode/teammate/issues/new?template=feature_request.yml). Describe the problem before the solution.
-- **Pick up an issue** labelled [`good first issue`](https://github.com/anshcantcode/teammate/labels/good%20first%20issue) or [`help wanted`](https://github.com/anshcantcode/teammate/labels/help%20wanted). Comment on it first so nobody duplicates work.
+- **Report a bug** with the [bug report form](https://github.com/anshcantcode/benchhand/issues/new?template=bug_report.yml). Steps to reproduce and your OS, model and version are the most useful details.
+- **Suggest a feature** with the [feature request form](https://github.com/anshcantcode/benchhand/issues/new?template=feature_request.yml). Describe the problem before the solution.
+- **Pick up an issue** labelled [`good first issue`](https://github.com/anshcantcode/benchhand/labels/good%20first%20issue) or [`help wanted`](https://github.com/anshcantcode/benchhand/labels/help%20wanted). Comment on it first so nobody duplicates work.
 - **Improve the docs.** If something in the [user guide](docs/USER_GUIDE.md) confused you, a fix is a great first pull request.
 - **Publish a plugin** for the marketplace. See the [plugin guide](docs/PLUGINS.md).
 
@@ -17,8 +17,8 @@ For a large change, such as a new integration, a new model protocol or a change 
 You need Rust stable, Node.js 22+ and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS. On Linux, the packages are listed in [the CI workflow](.github/workflows/desktop.yml).
 
 ```sh
-git clone https://github.com/anshcantcode/teammate.git
-cd teammate
+git clone https://github.com/anshcantcode/benchhand.git
+cd benchhand
 npm ci                 # also copies vendored scripts and fonts into frontend/vendor
 npm run dev            # starts the desktop app with live reload of the frontend
 ```

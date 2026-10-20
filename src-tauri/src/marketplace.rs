@@ -589,7 +589,7 @@ async fn prepare_runtime(
                         }
                     }
                 }
-                found.ok_or("Install Node.js with npm, then restart Teammate")?
+                found.ok_or("Install Node.js with npm, then restart Benchhand")?
             };
             let package = r["package"].as_str().unwrap();
             let version = r["version"].as_str().unwrap();

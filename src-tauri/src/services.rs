@@ -500,7 +500,7 @@ pub async fn mcp_request(
         .clone();
     let mut session = shared.lock().await;
     if session.is_none() {
-        let (init, id)=mcp_rpc(client,base,token,None,"2025-03-26",json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Teammate","version":env!("CARGO_PKG_VERSION")}}})).await?;
+        let (init, id)=mcp_rpc(client,base,token,None,"2025-03-26",json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Benchhand","version":env!("CARGO_PKG_VERSION")}}})).await?;
         let version = init["protocolVersion"]
             .as_str()
             .unwrap_or("2025-03-26")
@@ -709,7 +709,7 @@ mod tests {
         let token = std::env::var("TEAMMATE_TEST_GITHUB_TOKEN")
             .expect("Set a test token in the process environment");
         let client = Client::builder()
-            .user_agent("Teammate/0.2")
+            .user_agent(concat!("Benchhand/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap();
         let (config, account) = verify_connection(&client, "github", &json!({}), &token)
@@ -735,7 +735,7 @@ mod tests {
     async fn live_browser_readonly() {
         let endpoint = std::env::var("TEAMMATE_TEST_MCP_URL").expect("Set the test MCP URL");
         let client = Client::builder()
-            .user_agent("Teammate/0.2")
+            .user_agent(concat!("Benchhand/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .unwrap();
@@ -766,7 +766,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(snapshot.to_string().contains("Teammate"), "{snapshot}");
+        assert!(snapshot.to_string().contains("Benchhand"), "{snapshot}");
         mcp_request(
             &client,
             &endpoint,

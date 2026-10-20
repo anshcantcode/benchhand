@@ -2,26 +2,30 @@
 
 <img src="src-tauri/app-icon.svg" width="72" alt="">
 
-# Teammate
+# Benchhand
 
 **A small team of AI bots that runs on your own computer.**
 Give a teammate a goal, watch the work happen, and approve anything that leaves the machine.
 
-[![Desktop packages](https://github.com/anshcantcode/teammate/actions/workflows/desktop.yml/badge.svg)](https://github.com/anshcantcode/teammate/actions/workflows/desktop.yml)
-[![Latest release](https://img.shields.io/github/v/release/anshcantcode/teammate?include_prereleases&label=release)](https://github.com/anshcantcode/teammate/releases)
+[![Desktop packages](https://github.com/anshcantcode/benchhand/actions/workflows/desktop.yml/badge.svg)](https://github.com/anshcantcode/benchhand/actions/workflows/desktop.yml)
+[![Latest release](https://img.shields.io/github/v/release/anshcantcode/benchhand?include_prereleases&label=release)](https://github.com/anshcantcode/benchhand/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Windows and Linux](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-informational)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
-[Download](https://github.com/anshcantcode/teammate/releases) · [User guide](docs/USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) · [Plugins](docs/PLUGINS.md) · [Roadmap](PRODUCT_DESIGN.md)
+<sub>Formerly Teammate. Existing installs keep their data; see the <a href="CHANGELOG.md#upgrading-from-teammate">upgrade notes</a>.</sub>
+
+[Download](https://github.com/anshcantcode/benchhand/releases) · [User guide](docs/USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) · [Plugins](docs/PLUGINS.md) · [Roadmap](PRODUCT_DESIGN.md)
 
 </div>
 
-![Teammate overview: one lane per teammate over the last 24 hours, the approvals waiting on you, and recent tasks](docs/images/overview.png)
+![Benchhand in use: the overview, then editing a Slack message in the approval queue before it is sent, and the task's steps moving on](docs/images/demo.gif)
 
-## Why Teammate
+<p align="center"><sub>Sample data. Every send, post or imported tool call waits here until you approve, edit or reject it.</sub></p>
 
-Most AI tools are a chat box. Teammate is a **durable task system**: each teammate has a role, its own model, instructions and private workspace. Tasks survive restarts, teammates hand work to each other, routines run on a schedule, and every send, post or imported tool call stops in an approval queue until you decide.
+## Why Benchhand
+
+Most AI tools are a chat box. Benchhand is a **durable task system**: each teammate has a role, its own model, instructions and private workspace. Tasks survive restarts, teammates hand work to each other, routines run on a schedule, and every send, post or imported tool call stops in an approval queue until you decide.
 
 - **Local first.** Tasks, results and history live in SQLite on your machine. Keys live in the OS credential store, never in prompts.
 - **Your models.** Ollama, LM Studio, vLLM, OpenAI, OpenRouter, Groq, or any OpenAI-compatible endpoint, chosen per teammate.
@@ -47,6 +51,9 @@ Most AI tools are a chat box. Teammate is a **durable task system**: each teamma
 
 <table>
   <tr>
+    <td colspan="2"><img src="docs/images/overview.png" alt="Benchhand overview: one lane per teammate over the last 24 hours, the approvals waiting on you, and recent tasks"></td>
+  </tr>
+  <tr>
     <td><img src="docs/images/task.png" alt="Task detail with run steps, delegated work, details and activity"></td>
     <td><img src="docs/images/approvals.png" alt="Approval queue showing a Slack message and a GitHub issue as they will appear"></td>
   </tr>
@@ -60,7 +67,7 @@ Most AI tools are a chat box. Teammate is a **durable task system**: each teamma
 
 ## Get started
 
-1. **Download** the Windows installer, Debian package or AppImage from [Releases](https://github.com/anshcantcode/teammate/releases).
+1. **Download** the Windows installer, Debian package or AppImage from [Releases](https://github.com/anshcantcode/benchhand/releases).
 2. **Connect a model.** Start [Ollama](https://ollama.com/download) and download a model from **Model library**, or add a cloud provider key in **Connections**.
 3. **Give a teammate a task** from the overview, then follow it in **Tasks** and decide in **Approvals**.
 
@@ -111,7 +118,7 @@ Packages are written to `src-tauri/target/release/bundle`. See [docs/VALIDATION.
 
 ## Contributing
 
-Contributions of every size are welcome: bug reports, docs, new integrations, model adapters, and interface polish. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue labelled [`good first issue`](https://github.com/anshcantcode/teammate/labels/good%20first%20issue) or [`help wanted`](https://github.com/anshcantcode/teammate/labels/help%20wanted).
+Contributions of every size are welcome: bug reports, docs, new integrations, model adapters, and interface polish. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue labelled [`good first issue`](https://github.com/anshcantcode/benchhand/labels/good%20first%20issue) or [`help wanted`](https://github.com/anshcantcode/benchhand/labels/help%20wanted).
 
 Areas where help makes the biggest difference:
 

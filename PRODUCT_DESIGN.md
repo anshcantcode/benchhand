@@ -1,7 +1,7 @@
 # Open-source AI teammate platform
 
 **Status:** Product direction and remaining roadmap; implemented features are documented in README.md.
-**Name:** Teammate
+**Name:** Benchhand
 
 ## Implemented in 0.3
 

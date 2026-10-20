@@ -1,8 +1,23 @@
 # Changelog
 
-All notable changes to Teammate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
+All notable changes to Benchhand are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.3.2] - 2026-10-20
+
+### Changed
+
+- **Teammate is now Benchhand.** The app, installers, tray menu and repository use the new name. Your bots are still called teammates.
+- Existing installs keep their tasks, settings, workspaces and saved keys, because the data folder and credential entries are unchanged.
+- Plugin bundles still use `teammate.json`, so published plugins keep working.
+- Preferences exports are saved as `benchhand-preferences.json`. Exports from Teammate still import.
+
+### Upgrading from Teammate
+
+1. In Teammate, turn off **Open Teammate when I sign in** under Preferences, then quit it from the tray.
+2. Install Benchhand. It opens your existing workspace.
+3. Uninstall Teammate. On Windows, leave "Delete the application data" unchecked. On Debian and Ubuntu, run `sudo apt remove teammate`.
 
 ## [0.3.1] - 2026-10-20
 
@@ -47,7 +62,8 @@ All notable changes to Teammate are recorded here. The format follows [Keep a Ch
 
 First desktop preview: guided setup, personalised themes, editable teammates, real task execution with local file workspaces, exact action approvals, local and cloud models through Chat Completions and Responses, the Ollama model library, GitHub and Slack, Streamable HTTP MCP import, Playwright browser setup and the vision companion bridge.
 
-[Unreleased]: https://github.com/anshcantcode/teammate/compare/v0.3.1...HEAD
-[0.3.1]: https://github.com/anshcantcode/teammate/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/anshcantcode/teammate/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/anshcantcode/teammate/releases/tag/v0.2.0
+[Unreleased]: https://github.com/anshcantcode/benchhand/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/anshcantcode/benchhand/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/anshcantcode/benchhand/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/anshcantcode/benchhand/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/anshcantcode/benchhand/releases/tag/v0.2.0

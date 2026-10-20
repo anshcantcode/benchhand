@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: teammate-${{ matrix.platform }}
+          name: benchhand-${{ matrix.platform }}
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/deb/*.deb
@@ -115,16 +115,16 @@ jobs:
 
           | Platform | Package |
           | --- | --- |
-          | Windows 10 and 11, x64 | `Teammate_*_x64-setup.exe` |
-          | Ubuntu 24.04+ and Debian-based Linux, x64 | `Teammate_*_amd64.deb` |
-          | Other Linux, x64 | `Teammate_*_amd64.AppImage` |
+          | Windows 10 and 11, x64 | `Benchhand_*_x64-setup.exe` |
+          | Ubuntu 24.04+ and Debian-based Linux, x64 | `Benchhand_*_amd64.deb` |
+          | Other Linux, x64 | `Benchhand_*_amd64.AppImage` |
 
-          Model weights, model runtimes such as Ollama, and optional tool servers are installed separately. `SHA256SUMS.txt` lists the package hashes. See the [user guide](https://github.com/anshcantcode/teammate/blob/main/docs/USER_GUIDE.md) to get started.
+          Model weights, model runtimes such as Ollama, and optional tool servers are installed separately. `SHA256SUMS.txt` lists the package hashes. See the [user guide](https://github.com/anshcantcode/benchhand/blob/main/docs/USER_GUIDE.md) to get started.
           EOF
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: Teammate ${{ github.ref_name }}
+          name: Benchhand ${{ github.ref_name }}
           body_path: notes.md
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           files: release/*

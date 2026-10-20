@@ -859,7 +859,7 @@ fn main() {
             };
             let db = open_database(&dir.join("teammate.sqlite3")).map_err(std::io::Error::other)?;
             let client = reqwest::Client::builder()
-                .user_agent("Teammate/0.3")
+                .user_agent(concat!("Benchhand/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(std::time::Duration::from_secs(10))
                 .timeout(std::time::Duration::from_secs(180))
                 .redirect(reqwest::redirect::Policy::none())
@@ -915,7 +915,7 @@ fn main() {
             models::cancel_download
         ])
         .build(tauri::generate_context!())
-        .expect("Teammate could not start")
+        .expect("Benchhand could not start")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 desktop::stop(app);
