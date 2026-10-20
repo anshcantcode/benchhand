@@ -711,15 +711,8 @@ async fn test_connection(
             .as_array()
             .filter(|v| v.len() <= 100)
             .ok_or("The server must expose at most 100 tools")?;
-        let mut config = c.config.clone();
-        config["tools"] = json!(list);
-        state
-            .lock()?
-            .execute(
-                "UPDATE connections SET config=?2 WHERE id=?1",
-                params![c.id, config.to_string()],
-            )
-            .map_err(db_error)?;
+        // Health checks never replace the catalog used by pending approvals.
+        // A reviewed plugin installation is the path for adopting new tools.
         format!("{} tools", list.len())
     } else {
         services::verify_connection(&state.client, &c.kind, &c.config, &token)

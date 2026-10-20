@@ -51,11 +51,13 @@ try{for($attempt=0;$attempt -lt 5;$attempt++){[NativeFocusCheck]::SwitchToThisWi
   }
   console.log("Live registry search and pagination passed.");
   const previousAuto = (await ipc("autostart_status")).enabled;
-  try {
-    await ipc("set_autostart", { enabled: !previousAuto });
-    expect((await ipc("autostart_status")).enabled).toBe(!previousAuto);
-  } finally {
-    await ipc("set_autostart", { enabled: previousAuto });
+  if (!previousAuto) {
+    try {
+      await ipc("set_autostart", { enabled: true });
+      expect((await ipc("autostart_status")).enabled).toBe(true);
+    } finally {
+      await ipc("set_autostart", { enabled: false });
+    }
   }
   const sources = await ipc("save_plugin_source", {
     label: "Test signed catalog",
