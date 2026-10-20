@@ -1,33 +1,45 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod agent;
+mod models;
+mod services;
+#[cfg(test)]
+mod test_support;
 
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::Serialize;
+use rusqlite::{params, Connection as Database, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
-struct AppState {
-    db: Mutex<Connection>,
+pub struct AppState {
+    db: Mutex<Database>,
+    data_dir: PathBuf,
+    client: reqwest::Client,
+    active: Mutex<HashMap<String, tokio::task::AbortHandle>>,
+    downloads: Mutex<HashMap<String, Value>>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Bot {
+pub struct Bot {
     id: String,
     name: String,
     role: String,
     description: String,
-    model_label: String,
+    instructions: String,
+    color: String,
+    provider_id: String,
 }
-
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Task {
+pub struct Task {
     id: String,
     title: String,
     description: String,
@@ -36,33 +48,50 @@ struct Task {
     status: String,
     created_at: i64,
     updated_at: i64,
-    is_demo: bool,
+    output: String,
+    error: String,
+    waiting_approval: bool,
 }
-
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Connection {
+    id: String,
+    kind: String,
+    label: String,
+    config: Value,
+    account: String,
+    verified_at: i64,
+}
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionInput {
+    #[serde(default)]
+    id: String,
+    kind: String,
+    label: String,
+    config: Value,
+    #[serde(default)]
+    secret: String,
+}
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Approval {
     id: String,
     task_id: String,
-    task_title: String,
-    bot_name: String,
     title: String,
     target: String,
     summary: String,
     status: String,
     created_at: i64,
-    is_demo: bool,
+    tool_name: String,
+    arguments: Value,
 }
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Dashboard {
-    bots: Vec<Bot>,
-    tasks: Vec<Task>,
-    approvals: Vec<Approval>,
-    queued_count: usize,
-    completed_count: usize,
-    pending_approval_count: usize,
+struct TaskEvent {
+    id: i64,
+    message: String,
+    created_at: i64,
 }
 
 fn now() -> i64 {
@@ -71,358 +100,751 @@ fn now() -> i64 {
         .unwrap_or_default()
         .as_secs() as i64
 }
-
-fn open_database(path: PathBuf) -> Result<Connection, Box<dyn std::error::Error>> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+fn db_error(error: impl std::fmt::Display) -> String {
+    error.to_string()
+}
+fn defaults() -> Value {
+    json!({"workspaceName":"My workspace","ownerName":"","theme":"dark","accent":"#b4a0ff",
+      "density":"comfortable","fontSize":14,"radius":14,"sidebarCompact":false,
+      "reduceMotion":false,"font":"sans","background":"glow","defaultView":"home",
+      "showActivity":true,"showStarters":true,"setupComplete":false,"maxSteps":12,"visionProviderId":""})
+}
+fn validate_settings(input: &Value) -> Result<Value, String> {
+    let mut settings = defaults();
+    let obj = input.as_object().ok_or("Settings must be an object")?;
+    for (key, value) in obj {
+        if settings.get(key).is_some() {
+            settings[key] = value.clone();
+        }
     }
-    let db = Connection::open(path)?;
-    db.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         PRAGMA journal_mode = WAL;
-         CREATE TABLE IF NOT EXISTS bots (
-             id TEXT PRIMARY KEY,
-             name TEXT NOT NULL,
-             role TEXT NOT NULL,
-             description TEXT NOT NULL,
-             model_label TEXT NOT NULL
-         );
-         CREATE TABLE IF NOT EXISTS tasks (
-             id TEXT PRIMARY KEY,
-             title TEXT NOT NULL,
-             description TEXT NOT NULL DEFAULT '',
-             bot_id TEXT NOT NULL REFERENCES bots(id),
-             status TEXT NOT NULL CHECK(status IN ('queued','running','paused','completed','failed','canceled')),
-             created_at INTEGER NOT NULL,
-             updated_at INTEGER NOT NULL,
-             is_demo INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE TABLE IF NOT EXISTS approvals (
-             id TEXT PRIMARY KEY,
-             task_id TEXT NOT NULL REFERENCES tasks(id),
-             title TEXT NOT NULL,
-             target TEXT NOT NULL,
-             summary TEXT NOT NULL,
-             status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),
-             created_at INTEGER NOT NULL,
-             is_demo INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE TABLE IF NOT EXISTS task_events (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             task_id TEXT NOT NULL REFERENCES tasks(id),
-             message TEXT NOT NULL,
-             created_at INTEGER NOT NULL
-         );",
-    )?;
-    seed_database(&db)?;
+    for (key, max) in [
+        ("workspaceName", 60),
+        ("ownerName", 60),
+        ("visionProviderId", 100),
+    ] {
+        let text = settings[key].as_str().ok_or("Names must be text")?.trim();
+        if text.chars().count() > max || (key == "workspaceName" && text.is_empty()) {
+            return Err("Use a workspace name between 1 and 60 characters".into());
+        }
+        settings[key] = json!(text);
+    }
+    for (key, allowed) in [
+        ("theme", vec!["dark", "light", "system"]),
+        ("density", vec!["comfortable", "compact"]),
+        ("font", vec!["sans", "mono"]),
+        ("background", vec!["glow", "flat"]),
+        ("defaultView", vec!["home", "tasks", "team", "connections"]),
+    ] {
+        if !allowed.contains(&settings[key].as_str().unwrap_or("")) {
+            return Err(format!("Invalid {key}"));
+        }
+    }
+    let accent = settings["accent"]
+        .as_str()
+        .ok_or("Choose a valid accent color")?;
+    if accent.len() != 7
+        || !accent.starts_with('#')
+        || !accent[1..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return Err("Use a six digit hex accent color".into());
+    }
+    for (key, min, max) in [("fontSize", 12, 18), ("radius", 0, 24), ("maxSteps", 1, 30)] {
+        let value = settings[key].as_i64().ok_or(format!("Invalid {key}"))?;
+        if !(min..=max).contains(&value) {
+            return Err(format!("{key} must be between {min} and {max}"));
+        }
+    }
+    for key in [
+        "sidebarCompact",
+        "reduceMotion",
+        "showActivity",
+        "showStarters",
+        "setupComplete",
+    ] {
+        if !settings[key].is_boolean() {
+            return Err(format!("Invalid {key}"));
+        }
+    }
+    Ok(settings)
+}
+fn open_database(path: &PathBuf) -> Result<Database, String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(db_error)?;
+    }
+    let db = Database::open(path).map_err(db_error)?;
+    db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
+      CREATE TABLE IF NOT EXISTS bots(id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,description TEXT NOT NULL,model_label TEXT NOT NULL DEFAULT 'Not connected');
+      CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',bot_id TEXT NOT NULL REFERENCES bots(id),status TEXT NOT NULL CHECK(status IN ('queued','running','paused','completed','failed','canceled')),created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,is_demo INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),title TEXT NOT NULL,target TEXT NOT NULL,summary TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),created_at INTEGER NOT NULL,is_demo INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS task_events(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT NOT NULL REFERENCES tasks(id),message TEXT NOT NULL,created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY,kind TEXT NOT NULL,label TEXT NOT NULL,config TEXT NOT NULL,account TEXT NOT NULL,verified_at INTEGER NOT NULL);").map_err(db_error)?;
+    for (table, column, definition) in [
+        ("bots", "instructions", "TEXT NOT NULL DEFAULT ''"),
+        ("bots", "color", "TEXT NOT NULL DEFAULT '#b4a0ff'"),
+        ("bots", "provider_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "output", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "error", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "continuation", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "waiting_approval", "INTEGER NOT NULL DEFAULT 0"),
+        ("approvals", "tool_name", "TEXT NOT NULL DEFAULT ''"),
+        ("approvals", "arguments", "TEXT NOT NULL DEFAULT '{}'"),
+    ] {
+        let mut stmt = db
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(db_error)?;
+        let columns = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(db_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_error)?;
+        if !columns.iter().any(|c| c == column) {
+            db.execute_batch(&format!(
+                "ALTER TABLE {table} ADD COLUMN {column} {definition}"
+            ))
+            .map_err(db_error)?;
+        }
+    }
+    db.execute_batch("DELETE FROM approvals WHERE is_demo=1; DELETE FROM task_events WHERE task_id IN(SELECT id FROM tasks WHERE is_demo=1); DELETE FROM tasks WHERE is_demo=1;
+      UPDATE tasks SET status='paused',error='The app restarted during this run. Run it again when ready.' WHERE status='running';").map_err(db_error)?;
+    for (id,name,role,description,color,instructions) in [
+      ("research","Scout","Research & synthesis","Turns scattered information into clear decisions.","#b4a0ff","Research carefully. Cite sources returned by tools. Distinguish evidence from inference. Produce a concise, useful result."),
+      ("operations","Atlas","Planning & operations","Keeps projects organized and moving forward.","#8bd7b6","Turn goals into concrete plans. Highlight priorities, dependencies, and next actions. Ask for approval before external changes."),
+      ("code","Forge","Engineering & GitHub","Understands issues and helps ship better software.","#efb47c","Be a precise software teammate. Use repository and issue information when available. Explain changes and tradeoffs clearly."),
+    ] {
+      db.execute("INSERT OR IGNORE INTO bots(id,name,role,description,instructions,color,provider_id,model_label) VALUES(?1,?2,?3,?4,?5,?6,'','Not connected')",params![id,name,role,description,instructions,color]).map_err(db_error)?;
+      db.execute("UPDATE bots SET name=?2,role=?3,description=?4,instructions=?5,color=?6 WHERE id=?1 AND instructions=''",params![id,name,role,description,instructions,color]).map_err(db_error)?;
+    }
     Ok(db)
 }
-
-fn seed_database(db: &Connection) -> rusqlite::Result<()> {
-    let bots = [
-        (
-            "research",
-            "Research",
-            "Research teammate",
-            "Find, analyze, and synthesize information.",
-        ),
-        (
-            "operations",
-            "Operations",
-            "Operations teammate",
-            "Keep recurring work organized and moving.",
-        ),
-        (
-            "code",
-            "Code",
-            "Software teammate",
-            "Build, fix, and improve software.",
-        ),
-    ];
-    for (id, name, role, description) in bots {
-        db.execute(
-            "INSERT OR IGNORE INTO bots (id, name, role, description, model_label) VALUES (?1, ?2, ?3, ?4, 'Not connected')",
-            params![id, name, role, description],
-        )?;
+impl AppState {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Database>, String> {
+        self.db
+            .lock()
+            .map_err(|_| "Local storage is busy. Try again.".into())
     }
-
-    let task_count: i64 = db.query_row("SELECT COUNT(*) FROM tasks", [], |row| row.get(0))?;
-    if task_count == 0 {
-        let timestamp = now();
-        let task_id = "example-task";
-        db.execute(
-            "INSERT INTO tasks (id, title, description, bot_id, status, created_at, updated_at, is_demo)
-             VALUES (?1, ?2, ?3, 'research', 'queued', ?4, ?4, 1)",
-            params![
-                task_id,
-                "Research AI meeting note tools",
-                "Example task. Connect a model before assigning real work.",
-                timestamp
-            ],
-        )?;
-        db.execute(
-            "INSERT INTO task_events (task_id, message, created_at) VALUES (?1, 'Example task created. Model execution is not connected yet.', ?2)",
-            params![task_id, timestamp],
-        )?;
-        db.execute(
-            "INSERT INTO approvals (id, task_id, title, target, summary, status, created_at, is_demo)
-             VALUES ('example-approval', ?1, 'Send recommendation to Product team', 'product-team@example.com', 'Example approval only. No email will be sent.', 'pending', ?2, 1)",
-            params![task_id, timestamp],
-        )?;
+    fn settings(&self) -> Result<Value, String> {
+        let value: Option<String> = self
+            .lock()?
+            .query_row(
+                "SELECT value FROM preferences WHERE key='settings'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        value
+            .map(|v| serde_json::from_str(&v).map_err(db_error))
+            .unwrap_or_else(|| Ok(defaults()))
     }
-    Ok(())
+    fn connections(&self) -> Result<Vec<Connection>, String> {
+        let db = self.lock()?;
+        let mut stmt=db.prepare("SELECT id,kind,label,config,account,verified_at FROM connections ORDER BY verified_at DESC").map_err(db_error)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Connection {
+                    id: r.get(0)?,
+                    kind: r.get(1)?,
+                    label: r.get(2)?,
+                    config: serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or(json!({})),
+                    account: r.get(4)?,
+                    verified_at: r.get(5)?,
+                })
+            })
+            .map_err(db_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
+    }
+    fn connection(&self, id: &str) -> Result<Connection, String> {
+        self.connections()?
+            .into_iter()
+            .find(|c| c.id == id)
+            .ok_or("This connection was removed. Connect it again.".into())
+    }
+    fn bots(&self) -> Result<Vec<Bot>, String> {
+        let db = self.lock()?;
+        let mut stmt=db.prepare("SELECT id,name,role,description,instructions,color,provider_id FROM bots ORDER BY rowid").map_err(db_error)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Bot {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    role: r.get(2)?,
+                    description: r.get(3)?,
+                    instructions: r.get(4)?,
+                    color: r.get(5)?,
+                    provider_id: r.get(6)?,
+                })
+            })
+            .map_err(db_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
+    }
+    fn tasks(&self) -> Result<Vec<Task>, String> {
+        let db = self.lock()?;
+        let mut stmt=db.prepare("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval FROM tasks t JOIN bots b ON b.id=t.bot_id ORDER BY t.created_at DESC,t.rowid DESC LIMIT 200").map_err(db_error)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Task {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    description: r.get(2)?,
+                    bot_id: r.get(3)?,
+                    bot_name: r.get(4)?,
+                    status: r.get(5)?,
+                    created_at: r.get(6)?,
+                    updated_at: r.get(7)?,
+                    output: r.get(8)?,
+                    error: r.get(9)?,
+                    waiting_approval: r.get::<_, i64>(10)? != 0,
+                })
+            })
+            .map_err(db_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
+    }
+    fn event(&self, task_id: &str, message: &str) -> Result<(), String> {
+        self.lock()?
+            .execute(
+                "INSERT INTO task_events(task_id,message,created_at) VALUES(?1,?2,?3)",
+                params![task_id, message, now()],
+            )
+            .map_err(db_error)?;
+        Ok(())
+    }
 }
-
-fn read_bots(db: &Connection) -> rusqlite::Result<Vec<Bot>> {
-    let mut statement = db.prepare(
-        "SELECT id, name, role, description, model_label FROM bots ORDER BY name COLLATE NOCASE",
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok(Bot {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            role: row.get(2)?,
-            description: row.get(3)?,
-            model_label: row.get(4)?,
-        })
-    })?;
-    rows.collect()
+fn secret_entry(id: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new("dev.localteam.teammate", id)
+        .map_err(|_| "Your operating system credential store is unavailable.".into())
 }
-
-fn read_tasks(db: &Connection) -> rusqlite::Result<Vec<Task>> {
-    let mut statement = db.prepare(
-        "SELECT t.id, t.title, t.description, t.bot_id, b.name, t.status, t.created_at, t.updated_at, t.is_demo
-         FROM tasks t JOIN bots b ON b.id = t.bot_id
-         ORDER BY t.created_at DESC",
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok(Task {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            description: row.get(2)?,
-            bot_id: row.get(3)?,
-            bot_name: row.get(4)?,
-            status: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-            is_demo: row.get::<_, i64>(8)? != 0,
-        })
-    })?;
-    rows.collect()
+fn read_secret(id: &str) -> Result<String, String> {
+    match secret_entry(id)?.get_password() {
+        Ok(s) => Ok(s),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(_) => Err("Unlock your operating system credential store and try again.".into()),
+    }
 }
-
-fn read_approvals(db: &Connection) -> rusqlite::Result<Vec<Approval>> {
-    let mut statement = db.prepare(
-        "SELECT a.id, a.task_id, t.title, b.name, a.title, a.target, a.summary, a.status, a.created_at, a.is_demo
-         FROM approvals a
-         JOIN tasks t ON t.id = a.task_id
-         JOIN bots b ON b.id = t.bot_id
-         ORDER BY CASE a.status WHEN 'pending' THEN 0 ELSE 1 END, a.created_at DESC",
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok(Approval {
-            id: row.get(0)?,
-            task_id: row.get(1)?,
-            task_title: row.get(2)?,
-            bot_name: row.get(3)?,
-            title: row.get(4)?,
-            target: row.get(5)?,
-            summary: row.get(6)?,
-            status: row.get(7)?,
-            created_at: row.get(8)?,
-            is_demo: row.get::<_, i64>(9)? != 0,
-        })
-    })?;
-    rows.collect()
+fn write_secret(id: &str, secret: &str) -> Result<(), String> {
+    secret_entry(id)?.set_password(secret).map_err(|_| {
+        "Could not save the secret. Unlock your operating system credential store and retry.".into()
+    })
+}
+fn connection_secret(connection: &Connection) -> Result<String, String> {
+    if connection.config["hasSecret"] == true {
+        read_secret(&connection.id)
+    } else {
+        Ok(String::new())
+    }
 }
 
 #[tauri::command]
-fn get_dashboard(state: State<'_, AppState>) -> Result<Dashboard, String> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| "Database is busy".to_string())?;
-    let bots = read_bots(&db).map_err(|error| error.to_string())?;
-    let tasks = read_tasks(&db).map_err(|error| error.to_string())?;
-    let approvals = read_approvals(&db).map_err(|error| error.to_string())?;
-    let queued_count = tasks.iter().filter(|task| task.status == "queued").count();
-    let completed_count = tasks
-        .iter()
-        .filter(|task| task.status == "completed")
-        .count();
-    let pending_approval_count = approvals
-        .iter()
-        .filter(|item| item.status == "pending")
-        .count();
-    Ok(Dashboard {
-        bots,
-        tasks,
-        approvals,
-        queued_count,
-        completed_count,
-        pending_approval_count,
-    })
+fn bootstrap(state: State<'_, AppState>) -> Result<Value, String> {
+    let db = state.lock()?;
+    let mut stmt=db.prepare("SELECT id,task_id,title,target,summary,status,created_at,tool_name,arguments FROM approvals ORDER BY created_at DESC LIMIT 100").map_err(db_error)?;
+    let approvals = stmt
+        .query_map([], |r| {
+            Ok(Approval {
+                id: r.get(0)?,
+                task_id: r.get(1)?,
+                title: r.get(2)?,
+                target: r.get(3)?,
+                summary: r.get(4)?,
+                status: r.get(5)?,
+                created_at: r.get(6)?,
+                tool_name: r.get(7)?,
+                arguments: serde_json::from_str(&r.get::<_, String>(8)?).unwrap_or(json!({})),
+            })
+        })
+        .map_err(db_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(db_error)?;
+    drop(stmt);
+    drop(db);
+    Ok(
+        json!({"settings":state.settings()?,"bots":state.bots()?,"tasks":state.tasks()?,"connections":state.connections()?,"approvals":approvals,"downloads":state.downloads.lock().map_err(db_error)?.values().cloned().collect::<Vec<_>>(),"device":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"threads":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"version":env!("CARGO_PKG_VERSION")}}),
+    )
 }
-
+#[tauri::command]
+fn save_settings(settings: Value, state: State<'_, AppState>) -> Result<Value, String> {
+    let validated = validate_settings(&settings)?;
+    state
+        .lock()?
+        .execute(
+            "INSERT OR REPLACE INTO preferences(key,value) VALUES('settings',?1)",
+            [validated.to_string()],
+        )
+        .map_err(db_error)?;
+    Ok(validated)
+}
+#[tauri::command]
+fn save_bot(mut bot: Bot, state: State<'_, AppState>) -> Result<Bot, String> {
+    for (text, max) in [
+        (&bot.name, 60),
+        (&bot.role, 100),
+        (&bot.description, 300),
+        (&bot.instructions, 12000),
+    ] {
+        if text.chars().count() > max {
+            return Err(format!("Keep this field under {max} characters"));
+        }
+    }
+    bot.name = bot.name.trim().to_string();
+    if bot.name.is_empty() {
+        return Err("Give your teammate a name".into());
+    }
+    if bot.id.is_empty() {
+        bot.id = Uuid::new_v4().to_string();
+    }
+    if bot.id.len() > 80
+        || !bot
+            .id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("Invalid teammate identifier".into());
+    }
+    if bot.color.len() != 7
+        || !bot.color.starts_with('#')
+        || !bot.color[1..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return Err("Choose a valid teammate color".into());
+    }
+    if !bot.provider_id.is_empty() && state.connection(&bot.provider_id)?.kind != "model" {
+        return Err("Choose a model connection".into());
+    }
+    state.lock()?.execute("INSERT INTO bots(id,name,role,description,instructions,color,provider_id,model_label) VALUES(?1,?2,?3,?4,?5,?6,?7,'Configured') ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,description=excluded.description,instructions=excluded.instructions,color=excluded.color,provider_id=excluded.provider_id",params![bot.id,bot.name,bot.role,bot.description,bot.instructions,bot.color,bot.provider_id]).map_err(db_error)?;
+    Ok(bot)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn delete_bot(bot_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    if state.bots()?.len() <= 1 {
+        return Err("Keep at least one teammate in your workspace".into());
+    }
+    let count: i64 = state
+        .lock()?
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE bot_id=?1",
+            [&bot_id],
+            |r| r.get(0),
+        )
+        .map_err(db_error)?;
+    if count > 0 {
+        return Err("This teammate has task history. You can edit its name, instructions, and model instead.".into());
+    }
+    state
+        .lock()?
+        .execute("DELETE FROM bots WHERE id=?1", [bot_id])
+        .map_err(db_error)?;
+    Ok(())
+}
 #[tauri::command(rename_all = "camelCase")]
 fn create_task(
     title: String,
     description: String,
     bot_id: String,
     state: State<'_, AppState>,
-) -> Result<Task, String> {
+) -> Result<String, String> {
     let title = title.trim();
-    let description = description.trim();
     if title.is_empty() || title.chars().count() > 160 {
-        return Err("Task title must be between 1 and 160 characters".to_string());
+        return Err("Use a task title between 1 and 160 characters".into());
     }
-    if description.chars().count() > 8000 {
-        return Err("Task details must be 8,000 characters or fewer".to_string());
+    if description.chars().count() > 16000 {
+        return Err("Keep task details under 16,000 characters".into());
     }
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| "Database is busy".to_string())?;
-    let bot_exists: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM bots WHERE id = ?1)",
-            [&bot_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if !bot_exists {
-        return Err("Choose an available bot".to_string());
+    if !state.bots()?.iter().any(|b| b.id == bot_id) {
+        return Err("Choose an available teammate".into());
     }
     let id = Uuid::new_v4().to_string();
-    let timestamp = now();
-    db.execute(
-        "INSERT INTO tasks (id, title, description, bot_id, status, created_at, updated_at, is_demo)
-         VALUES (?1, ?2, ?3, ?4, 'queued', ?5, ?5, 0)",
-        params![id, title, description, bot_id, timestamp],
-    )
-    .map_err(|error| error.to_string())?;
-    db.execute(
-        "INSERT INTO task_events (task_id, message, created_at) VALUES (?1, 'Task saved locally. Connect a model to start it.', ?2)",
-        params![id, timestamp],
-    )
-    .map_err(|error| error.to_string())?;
-    let task = db
-        .query_row(
-            "SELECT t.id, t.title, t.description, t.bot_id, b.name, t.status, t.created_at, t.updated_at, t.is_demo
-             FROM tasks t JOIN bots b ON b.id = t.bot_id WHERE t.id = ?1",
-            [&id],
-            |row| {
-                Ok(Task {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    description: row.get(2)?,
-                    bot_id: row.get(3)?,
-                    bot_name: row.get(4)?,
-                    status: row.get(5)?,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
-                    is_demo: row.get::<_, i64>(8)? != 0,
-                })
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(task)
+    state.lock()?.execute("INSERT INTO tasks(id,title,description,bot_id,status,created_at,updated_at) VALUES(?1,?2,?3,?4,'queued',?5,?5)",params![id,title,description.trim(),bot_id,now()]).map_err(db_error)?;
+    state.event(&id, "Task created")?;
+    Ok(id)
 }
-
 #[tauri::command(rename_all = "camelCase")]
-fn cancel_task(task_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| "Database is busy".to_string())?;
-    let status: Option<String> = db
-        .query_row(
-            "SELECT status FROM tasks WHERE id = ?1",
-            [&task_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some(status) = status else {
-        return Err("Task not found".to_string());
-    };
-    if !matches!(status.as_str(), "queued" | "paused" | "running") {
-        return Err("This task can no longer be canceled".to_string());
+fn task_events(task_id: String, state: State<'_, AppState>) -> Result<Vec<TaskEvent>, String> {
+    let db = state.lock()?;
+    let mut stmt = db
+        .prepare("SELECT id,message,created_at FROM task_events WHERE task_id=?1 ORDER BY id")
+        .map_err(db_error)?;
+    let rows = stmt
+        .query_map([task_id], |r| {
+            Ok(TaskEvent {
+                id: r.get(0)?,
+                message: r.get(1)?,
+                created_at: r.get(2)?,
+            })
+        })
+        .map_err(db_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
+}
+fn launch(app: tauri::AppHandle, task_id: String, resume: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let task = state
+        .tasks()?
+        .into_iter()
+        .find(|t| t.id == task_id)
+        .ok_or("Task not found")?;
+    if task.status == "running" {
+        return Err("This task is already running".into());
     }
-    let timestamp = now();
-    db.execute(
-        "UPDATE tasks SET status = 'canceled', updated_at = ?2 WHERE id = ?1",
-        params![task_id, timestamp],
-    )
-    .map_err(|error| error.to_string())?;
-    db.execute(
-        "INSERT INTO task_events (task_id, message, created_at) VALUES (?1, 'Task canceled by you.', ?2)",
-        params![task_id, timestamp],
-    )
-    .map_err(|error| error.to_string())?;
+    if task.waiting_approval && !resume {
+        return Err("Review the pending approval first".into());
+    }
+    let bot = state
+        .bots()?
+        .into_iter()
+        .find(|b| b.id == task.bot_id)
+        .ok_or("Teammate not found")?;
+    if bot.provider_id.is_empty() {
+        return Err("Choose a model in this teammate's settings before running a task".into());
+    }
+    let provider = state.connection(&bot.provider_id)?;
+    if provider.kind != "model" {
+        return Err("Choose a model connection".into());
+    }
+    let _ = connection_secret(&provider)?;
+    let changed = state.lock()?.execute("UPDATE tasks SET status='running',waiting_approval=0,error='',output=CASE WHEN ?3 THEN output ELSE '' END,updated_at=?2 WHERE id=?1 AND status<>'running' AND (waiting_approval=0 OR ?3)",params![task_id,now(),resume]).map_err(db_error)?;
+    if changed != 1 {
+        return Err("This task is already running or needs an approval decision".into());
+    }
+    state.event(
+        &task_id,
+        if resume {
+            "Resuming after your decision"
+        } else {
+            "Run started"
+        },
+    )?;
+    let id = task_id.clone();
+    let app_copy = app.clone();
+    let mut active = state.active.lock().map_err(db_error)?;
+    let handle = tauri::async_runtime::spawn(async move {
+        let result = agent::run(&app_copy, &id, resume).await;
+        let state = app_copy.state::<AppState>();
+        if let Err(error) = result {
+            let _=state.lock().and_then(|db|db.execute("UPDATE tasks SET status='failed',error=?2,updated_at=?3 WHERE id=?1 AND status='running'",params![id,error,now()]).map_err(db_error));
+            let _ = state.event(&id, &format!("Run stopped: {error}"));
+        }
+        if let Ok(mut active) = state.active.lock() {
+            active.remove(&id);
+        }
+        let _ = app_copy.emit("workspace-updated", json!({"taskId":id}));
+    });
+    active.insert(task_id, handle.inner().abort_handle());
     Ok(())
 }
-
+#[tauri::command(rename_all = "camelCase")]
+fn start_task(task_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    launch(app, task_id, false)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn cancel_task(task_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if let Some(handle) = state.active.lock().map_err(db_error)?.remove(&task_id) {
+        handle.abort();
+    }
+    let changed=state.lock()?.execute("UPDATE tasks SET status='canceled',waiting_approval=0,updated_at=?2 WHERE id=?1 AND status IN('queued','running','paused')",params![task_id,now()]).map_err(db_error)?;
+    if changed == 0 {
+        return Err("This task has already finished".into());
+    }
+    state
+        .lock()?
+        .execute(
+            "UPDATE approvals SET status='rejected' WHERE task_id=?1 AND status='pending'",
+            [&task_id],
+        )
+        .map_err(db_error)?;
+    state.event(&task_id, "Canceled by you")?;
+    let _ = app.emit("workspace-updated", json!({"taskId":task_id}));
+    Ok(())
+}
 #[tauri::command(rename_all = "camelCase")]
 fn decide_approval(
     approval_id: String,
     decision: String,
-    state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    if !matches!(decision.as_str(), "approved" | "rejected") {
-        return Err("Choose approve or reject".to_string());
+    if !["approved", "rejected"].contains(&decision.as_str()) {
+        return Err("Choose approve or reject".into());
     }
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| "Database is busy".to_string())?;
-    let approval: Option<(String, i64)> = db
+    let state = app.state::<AppState>();
+    let task_id: String = state
+        .lock()?
         .query_row(
-            "SELECT task_id, is_demo FROM approvals WHERE id = ?1 AND status = 'pending'",
+            "SELECT task_id FROM approvals WHERE id=?1 AND status='pending'",
             [&approval_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |r| r.get(0),
         )
         .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((task_id, is_demo)) = approval else {
-        return Err("This approval is no longer pending".to_string());
-    };
-    if is_demo != 1 {
-        return Err("External actions are not connected in this prototype".to_string());
+        .map_err(db_error)?
+        .ok_or("This approval is no longer pending")?;
+    let changed = state
+        .lock()?
+        .execute(
+            "UPDATE approvals SET status=?2 WHERE id=?1 AND status='pending'",
+            params![approval_id, decision],
+        )
+        .map_err(db_error)?;
+    if changed == 0 {
+        return Err("This approval is no longer pending".into());
     }
-    let timestamp = now();
-    db.execute(
-        "UPDATE approvals SET status = ?2 WHERE id = ?1 AND status = 'pending'",
-        params![approval_id, decision],
-    )
-    .map_err(|error| error.to_string())?;
-    let message = if decision == "approved" {
-        "Example approval recorded. No email was sent."
-    } else {
-        "Example approval rejected. No email was sent."
-    };
-    db.execute(
-        "INSERT INTO task_events (task_id, message, created_at) VALUES (?1, ?2, ?3)",
-        params![task_id, message, timestamp],
-    )
-    .map_err(|error| error.to_string())?;
+    // The persisted continuation contains the exact proposal that was reviewed.
+    if let Err(error) = launch(app.clone(), task_id, true) {
+        state
+            .lock()?
+            .execute(
+                "UPDATE approvals SET status='pending' WHERE id=?1",
+                [approval_id],
+            )
+            .map_err(db_error)?;
+        return Err(error);
+    }
     Ok(())
 }
-
+#[tauri::command]
+async fn probe_model(input: ConnectionInput, state: State<'_, AppState>) -> Result<Value, String> {
+    let token = if input.secret.is_empty() && !input.id.is_empty() {
+        connection_secret(&state.connection(&input.id)?)?
+    } else {
+        input.secret.clone()
+    };
+    services::probe_model(&state.client, &input.config, &token).await
+}
+#[tauri::command]
+async fn save_connection(
+    mut input: ConnectionInput,
+    state: State<'_, AppState>,
+) -> Result<Connection, String> {
+    if input.label.trim().is_empty() || input.label.chars().count() > 80 {
+        return Err("Use a connection name between 1 and 80 characters".into());
+    }
+    let token = if input.secret.is_empty() && !input.id.is_empty() {
+        connection_secret(&state.connection(&input.id)?)?
+    } else {
+        input.secret.clone()
+    };
+    if input.id.is_empty() {
+        input.id = Uuid::new_v4().to_string();
+    }
+    let (mut config, account) =
+        services::verify_connection(&state.client, &input.kind, &input.config, &token).await?;
+    config["hasSecret"] = json!(!token.is_empty());
+    if !token.is_empty() {
+        write_secret(&input.id, &token)?;
+    }
+    let c = Connection {
+        id: input.id,
+        kind: input.kind,
+        label: input.label.trim().to_string(),
+        config,
+        account,
+        verified_at: now(),
+    };
+    let db = state.lock()?;
+    db.execute("INSERT INTO connections(id,kind,label,config,account,verified_at) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,label=excluded.label,config=excluded.config,account=excluded.account,verified_at=excluded.verified_at",params![c.id,c.kind,c.label,c.config.to_string(),c.account,c.verified_at]).map_err(db_error)?;
+    if c.kind == "model" {
+        db.execute(
+            "UPDATE bots SET provider_id=?1 WHERE provider_id=''",
+            [&c.id],
+        )
+        .map_err(db_error)?;
+    }
+    Ok(c)
+}
+#[tauri::command(rename_all = "camelCase")]
+async fn test_connection(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let c = state.connection(&connection_id)?;
+    let token = connection_secret(&c)?;
+    let (_, account) =
+        services::verify_connection(&state.client, &c.kind, &c.config, &token).await?;
+    state
+        .lock()?
+        .execute(
+            "UPDATE connections SET verified_at=?2,account=?3 WHERE id=?1",
+            params![c.id, now(), account],
+        )
+        .map_err(db_error)?;
+    Ok(json!({"account":account,"ok":true}))
+}
+#[tauri::command(rename_all = "camelCase")]
+fn remove_connection(connection_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let connection = state.connection(&connection_id)?;
+    if connection.config["hasSecret"] == true {
+        match secret_entry(&connection_id)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) => return Err(
+                "Unlock the credential store before disconnecting so its secret can be removed."
+                    .into(),
+            ),
+        }
+    }
+    // Cancel active requests before revoking the shared tool connection.
+    state.active.lock().map_err(db_error)?.retain(|id, handle| {
+        if id.starts_with("download:") {
+            true
+        } else {
+            handle.abort();
+            false
+        }
+    });
+    let db = state.lock()?;
+    db.execute("UPDATE tasks SET status='paused',error='A connection was disconnected. Review connections and run again.' WHERE status='running'",[]).map_err(db_error)?;
+    db.execute(
+        "UPDATE bots SET provider_id='' WHERE provider_id=?1",
+        [&connection_id],
+    )
+    .map_err(db_error)?;
+    db.execute("DELETE FROM connections WHERE id=?1", [&connection_id])
+        .map_err(db_error)?;
+    Ok(())
+}
+#[tauri::command(rename_all = "camelCase")]
+async fn browse_connection(
+    connection_id: String,
+    action: String,
+    arguments: Value,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let c = state.connection(&connection_id)?;
+    let token = connection_secret(&c)?;
+    let allowed = match c.kind.as_str() {
+        "github" => ["repositories", "issues"].contains(&action.as_str()),
+        "slack" => ["channels", "history"].contains(&action.as_str()),
+        "mcp" => action == "tools",
+        _ => false,
+    };
+    if !allowed {
+        return Err("This action is not available in the connection browser".into());
+    }
+    services::integration_action(&state.client, &c, &token, &action, &arguments).await
+}
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid link")?;
+    if parsed.scheme() != "https" || !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("Only secure web links can be opened".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(db_error)?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(db_error)?;
+    }
+    Ok(())
+}
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            let path = app.path().app_data_dir()?.join("teammate.sqlite3");
-            let db = open_database(path)?;
-            app.manage(AppState { db: Mutex::new(db) });
+            let dir = if let Some(value) = std::env::var_os("TEAMMATE_DATA_DIR") {
+                let path = PathBuf::from(value);
+                if !path.is_absolute() {
+                    return Err(std::io::Error::other(
+                        "TEAMMATE_DATA_DIR must be an absolute directory",
+                    )
+                    .into());
+                }
+                path
+            } else {
+                app.path().app_data_dir()?
+            };
+            let db = open_database(&dir.join("teammate.sqlite3")).map_err(std::io::Error::other)?;
+            let client = reqwest::Client::builder()
+                .user_agent("Teammate/0.2")
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(180))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?;
+            app.manage(AppState {
+                db: Mutex::new(db),
+                data_dir: dir,
+                client,
+                active: Mutex::new(HashMap::new()),
+                downloads: Mutex::new(HashMap::new()),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_dashboard,
+            bootstrap,
+            save_settings,
+            save_bot,
+            delete_bot,
             create_task,
+            task_events,
+            start_task,
             cancel_task,
-            decide_approval
+            decide_approval,
+            probe_model,
+            save_connection,
+            test_connection,
+            remove_connection,
+            browse_connection,
+            open_external,
+            models::local_models,
+            models::download_model,
+            models::cancel_download
         ])
         .run(tauri::generate_context!())
-        .expect("Teammate failed to start");
+        .expect("Teammate could not start");
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn settings_validate_and_ignore_unknown_keys() {
+        let mut s = defaults();
+        s["workspaceName"] = json!("  Studio  ");
+        s["token"] = json!("never-save");
+        let v = validate_settings(&s).unwrap();
+        assert_eq!(v["workspaceName"], "Studio");
+        assert!(v.get("token").is_none());
+        s["accent"] = json!("url(evil)");
+        assert!(validate_settings(&s).is_err());
+        s = defaults();
+        s["maxSteps"] = json!(999);
+        assert!(validate_settings(&s).is_err());
+    }
+    #[test]
+    fn migration_preserves_tasks_and_removes_demo() {
+        let path = std::env::temp_dir().join(format!("teammate-{}.sqlite3", Uuid::new_v4()));
+        {
+            let db = open_database(&path).unwrap();
+            db.execute("INSERT INTO tasks(id,title,bot_id,status,created_at,updated_at) VALUES('real','Keep me','research','running',1,1)",[]).unwrap();
+            db.execute("INSERT INTO tasks(id,title,bot_id,status,created_at,updated_at,is_demo) VALUES('demo','Remove me','research','queued',1,1,1)",[]).unwrap();
+        }
+        {
+            let db = open_database(&path).unwrap();
+            assert_eq!(
+                db.query_row("SELECT status FROM tasks WHERE id='real'", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "paused"
+            );
+            assert_eq!(
+                db.query_row("SELECT COUNT(*) FROM tasks WHERE is_demo=1", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        let _ = fs::remove_file(path);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn credential_store_roundtrip() {
+        let id = format!("test-{}", Uuid::new_v4());
+        write_secret(&id, "test-value-only").unwrap();
+        assert_eq!(read_secret(&id).unwrap(), "test-value-only");
+        secret_entry(&id).unwrap().delete_credential().unwrap();
+        assert!(read_secret(&id).unwrap().is_empty());
+    }
 }

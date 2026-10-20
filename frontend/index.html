@@ -1,37 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f7fa" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#111216" />
     <title>Teammate</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="./vendor/marked.js" defer></script>
+    <script src="./vendor/purify.js" defer></script>
     <script src="./app.js" defer></script>
   </head>
   <body>
-    <div id="app-root"></div>
-    <dialog id="new-task-modal" aria-labelledby="new-task-title">
-      <form id="new-task-form">
-        <div class="modal-heading">
-          <div>
-            <p class="eyebrow">NEW TASK</p>
-            <h2 id="new-task-title">What should your team work on?</h2>
-          </div>
-          <button class="icon-button" value="cancel" formmethod="dialog" aria-label="Close dialog">×</button>
-        </div>
-        <label class="field-label" for="task-title">Task</label>
-        <input id="task-title" name="title" maxlength="160" placeholder="e.g. Compare project management tools" required />
-        <label class="field-label" for="task-description">Details <span class="optional">Optional</span></label>
-        <textarea id="task-description" name="description" rows="4" maxlength="8000" placeholder="Add context, links, or what a good result looks like."></textarea>
-        <label class="field-label" for="task-bot">Assign to</label>
-        <select id="task-bot" name="botId" required></select>
-        <p class="form-note">Tasks are saved on this device. Connect a model before asking a bot to run one.</p>
-        <div class="modal-actions">
-          <button class="button button-quiet" value="cancel" formmethod="dialog">Cancel</button>
-          <button class="button button-primary" type="submit">Save task</button>
-        </div>
-      </form>
-    </dialog>
+    <div id="app-root">
+      <div class="boot-screen">
+        <span class="loader"></span>
+        <p>Opening your workspace…</p>
+      </div>
+    </div>
+    <dialog id="sheet" aria-labelledby="dialog-title"></dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

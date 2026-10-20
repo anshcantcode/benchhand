@@ -1,7 +1,11 @@
 # Open-source AI teammate platform
 
-**Status:** First product and architecture draft  
-**Working name:** TBD
+**Status:** Product direction and remaining roadmap; implemented features are documented in README.md.
+**Name:** Teammate
+
+## Implemented in 0.2
+
+The desktop app now has guided setup, appearance controls, persistent teammate profiles and tasks, local/cloud model adapters, bounded agent runs, private workspace files, durable approvals, GitHub and Slack integrations, remote MCP import, browser setup, an Ollama download library, and a vision companion bridge. The README describes tested behavior and current limits. Schedules, collaboration between teammates, a native host controller, embedded inference, and a signed marketplace remain future work.
 
 ## Product
 

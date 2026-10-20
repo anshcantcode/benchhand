@@ -1,15 +1,25 @@
 {
   "name": "teammate-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/vendor.mjs",
+    "preview": "node scripts/preview.mjs",
+    "test:ui": "playwright test",
+    "test:native": "node scripts/native-check.mjs",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "dev": "tauri dev",
     "build": "tauri build",
     "build:windows": "tauri build --bundles nsis",
     "build:linux": "tauri build --bundles deb,appimage"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.1"
   }
 }

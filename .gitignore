@@ -2,6 +2,11 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/schemas/
 dist/
+frontend/vendor/
+test-results/
+playwright-report/
+.native-check/
+.playwright-mcp/
 .env
 .env.*
 !.env.example

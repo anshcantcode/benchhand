@@ -42,11 +42,23 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev \
+            libdbus-1-dev \
             libwebkit2gtk-4.1-dev \
             libxdo-dev \
             wget
 
       - run: npm ci
+
+      - name: Rust runtime checks
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Install UI test browser
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Interface checks
+        if: runner.os == 'Linux'
+        run: npm run test:ui
 
       - name: Build desktop packages
         run: npm run ${{ matrix.build_script }}
