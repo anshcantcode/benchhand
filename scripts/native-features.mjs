@@ -1,5 +1,7 @@
 import { expect } from "@playwright/test";
 import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 export async function checkFeatures(
   page,
@@ -10,6 +12,28 @@ export async function checkFeatures(
       ({ command, args }) => window.__TAURI__.core.invoke(command, args),
       { command, args },
     );
+  const focusOwnWindow = async () => {
+    const { stdout } = await promisify(execFile)(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class NativeFocusCheck { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a,uint b,bool attach); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n); [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr h,bool altTab); }';
+$testWindow=(Get-Process -Id ${pid}).MainWindowHandle;$currentThread=[NativeFocusCheck]::GetCurrentThreadId();$foregroundThread=[NativeFocusCheck]::GetWindowThreadProcessId([NativeFocusCheck]::GetForegroundWindow(),[IntPtr]::Zero);
+[NativeFocusCheck]::ShowWindow($testWindow,9)|Out-Null;[NativeFocusCheck]::AttachThreadInput($currentThread,$foregroundThread,$true)|Out-Null;
+try{[NativeFocusCheck]::SwitchToThisWindow($testWindow,$true);[NativeFocusCheck]::SetForegroundWindow($testWindow)|Out-Null}finally{[NativeFocusCheck]::AttachThreadInput($currentThread,$foregroundThread,$false)|Out-Null};
+([NativeFocusCheck]::GetForegroundWindow() -eq $testWindow).ToString();
+`,
+      ],
+      { windowsHide: true },
+    );
+    expect(
+      stdout.trim(),
+      "Only the isolated test app may receive native input",
+    ).toBe("True");
+  };
   let state = await ipc("bootstrap");
   const previousAuto = (await ipc("autostart_status")).enabled;
   try {
@@ -222,10 +246,27 @@ export async function checkFeatures(
   const inspection = await start("Native inspect integration");
   await complete(inspection);
   const info = inspect();
-  const window = info.windows.find(
-    (w) => w.pid === pid && w.title === "Teammate",
+  expect(Array.isArray(info.windows)).toBe(true);
+  // The capture library deliberately excludes the calling process from window discovery.
+  // Read only this isolated app's rectangle for the test target, using a DPI-aware Win32 query.
+  const { stdout } = await promisify(execFile)(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class NativeDesktopCheck { [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r); [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c); }';
+[NativeDesktopCheck]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null;
+$targetProcess=Get-Process -Id ${pid}; if($targetProcess.MainWindowTitle -ne 'Teammate'){throw 'Unexpected native test window'};
+$rect=New-Object NativeDesktopCheck+Rect; [NativeDesktopCheck]::GetWindowRect($targetProcess.MainWindowHandle,[ref]$rect) | Out-Null;
+@{x=$rect.Left;y=$rect.Top;width=($rect.Right-$rect.Left);height=($rect.Bottom-$rect.Top)} | ConvertTo-Json -Compress;
+`,
+    ],
+    { windowsHide: true },
   );
-  expect(window).toBeTruthy();
+  const window = JSON.parse(stdout);
+  expect(window.width).toBeGreaterThan(800);
   const display = info.displays.find((d) => d.id === preview.displayId);
   expect(display).toBeTruthy();
   // All actual input is confined to an editor we create in this isolated test app.
@@ -280,6 +321,7 @@ export async function checkFeatures(
     );
     expect(approval.arguments).toEqual(args);
     await page.bringToFront();
+    await focusOwnWindow();
     await page.locator("#native-input-fixture").focus();
     await ipc("decide_approval", {
       approvalId: approval.id,

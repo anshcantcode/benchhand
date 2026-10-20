@@ -191,9 +191,8 @@ mod tests {
     #[tokio::test]
     async fn persistent_process_keeps_state_and_restarts_after_stop() {
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests/fixtures/mcp-stdio.mjs")
-            .canonicalize()
-            .unwrap();
+            .join("../tests/fixtures/mcp-stdio.mjs");
+        assert!(fixture.is_file());
         let c = Connection {
             id: uuid::Uuid::new_v4().to_string(),
             kind: "mcp".into(),

@@ -86,7 +86,7 @@ npm run build:windows
 npm run build:linux
 ```
 
-Packages are written to `src-tauri/target/release/bundle`. CI builds Windows x64 and Ubuntu 22.04 x64 packages. Locally built Linux preview packages use Ubuntu 24.04. The Windows bundle uses the system webview and does not ship Chromium. Model weights and separate tool runtimes are additional downloads.
+Packages are written to `src-tauri/target/release/bundle`. CI builds Windows x64 and Ubuntu 24.04 x64 packages. Linux native capture uses modern PipeWire headers and requires Ubuntu 24.04 or an equivalent recent desktop. The Windows bundle uses the system webview and does not ship Chromium. Model weights and separate tool runtimes are additional downloads.
 
 ### Checks
 
