@@ -35,6 +35,21 @@ try{[NativeFocusCheck]::SwitchToThisWindow($testWindow,$true);[NativeFocusCheck]
     ).toBe("True");
   };
   let state = await ipc("bootstrap");
+  const registry = await ipc("marketplace_search", {
+    source: "registry",
+    query: "memory",
+    cursor: "",
+  });
+  expect(registry.entries.length).toBeGreaterThan(0);
+  if (registry.nextCursor) {
+    const next = await ipc("marketplace_search", {
+      source: "registry",
+      query: "memory",
+      cursor: registry.nextCursor,
+    });
+    expect(next.entries.length).toBeGreaterThan(0);
+  }
+  console.log("Live registry search and pagination passed.");
   const previousAuto = (await ipc("autostart_status")).enabled;
   try {
     await ipc("set_autostart", { enabled: !previousAuto });
@@ -383,4 +398,40 @@ $rect=New-Object NativeDesktopCheck+Rect; [NativeDesktopCheck]::GetWindowRect($t
   console.log(
     "Native computer passed: real display/window discovery, JPEG capture, exact approvals, native typing/key/click/move/drag/scroll in an isolated editor, and revocation.",
   );
+  await ipc("save_schedule", {
+    schedule: {
+      id: "",
+      name: "Weekly project review",
+      botId: "research",
+      title:
+        "Summarize project context and ask Forge for an engineering review",
+      description:
+        "Prepare a useful weekly brief. Review external actions before execution.",
+      config: {
+        kind: "weekly",
+        time: "09:00",
+        timezone: "Asia/Kolkata",
+        days: [1],
+        missed: "run_once",
+      },
+      enabled: false,
+    },
+  });
+  await page.evaluate(() => refresh());
+  for (const [label, file] of [
+    ["Routines", "native-routines"],
+    ["Computer", "native-computer"],
+    ["Marketplace", "native-marketplace"],
+  ]) {
+    await page
+      .locator("nav")
+      .getByRole("button", { name: label, exact: true })
+      .click();
+    if (label === "Marketplace")
+      await expect(page.locator(".catalog-card h3")).toHaveCount(3);
+    await page.screenshot({
+      path: `design/screenshots/${file}.png`,
+      fullPage: true,
+    });
+  }
 }

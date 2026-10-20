@@ -1,6 +1,36 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
+test("plugin review renders publisher text without interpreting HTML", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page
+    .locator("nav")
+    .getByRole("button", { name: "Marketplace" })
+    .click();
+  await page
+    .getByRole("button", { name: "Import plugin", exact: true })
+    .click();
+  const name = '<img src=x onerror="window.unsafe=true">';
+  await page
+    .locator("[name=manifest]")
+    .fill(
+      JSON.stringify({
+        id: "test/hostile-title",
+        name,
+        version: "<b>1</b>",
+        runtime: { kind: "http", url: "https://example.org/mcp" },
+      }),
+    );
+  await page
+    .getByRole("button", { name: "Review plugin", exact: true })
+    .click();
+  await expect(page.locator("#dialog-title")).toHaveText(name);
+  await expect(page.locator("dialog img")).toHaveCount(0);
+  expect(await page.evaluate(() => window.unsafe)).toBeUndefined();
+});
+
 test("marketplace reviews installs disables and removes a plugin", async ({
   page,
 }) => {
