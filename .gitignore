@@ -16,3 +16,4 @@ playwright-report/
 *.sqlite3-wal
 .DS_Store
 Thumbs.db
+.taste-skill/

@@ -6,6 +6,7 @@
   "scripts": {
     "postinstall": "node scripts/vendor.mjs",
     "preview": "node scripts/preview.mjs",
+    "preview:sample": "node scripts/preview.mjs --sample",
     "test:ui": "playwright test",
     "test:native": "node scripts/native-check.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
@@ -19,6 +20,7 @@
     "@tauri-apps/cli": "^2.0.0"
   },
   "dependencies": {
+    "@fontsource-variable/public-sans": "^5.3.0",
     "dompurify": "^3.4.17",
     "marked": "^18.1.1"
   }

@@ -53,7 +53,7 @@ test("marketplace reviews installs disables and removes a plugin", async ({
   await page
     .getByRole("button", { name: "Uninstall plugin", exact: true })
     .click();
-  await expect(page.getByText("Your toolbox starts here.")).toBeVisible();
+  await expect(page.getByText("No plugins installed")).toBeVisible();
 });
 test("routines save weekly timing context and enabled state", async ({
   page,
@@ -536,7 +536,7 @@ test("guided setup connects a model and preserves a personalized workspace", asy
 }) => {
   await nativeFixture(page, { setup: false, connected: false });
   await expect(
-    page.getByRole("heading", { name: "A little help. A lot more you." }),
+    page.getByRole("heading", { name: "Set up your workspace" }),
   ).toBeVisible();
   await page.locator("#setup-owner").fill("Mira");
   await page.locator("#setup-workspace").fill("Mira’s studio");
@@ -549,8 +549,8 @@ test("guided setup connects a model and preserves a personalized workspace", asy
   await expect(page.getByText("Ollama · qwen3:8b")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Daylight" }).click();
-  await page.getByRole("button", { name: "Accent #8bd7b6" }).click();
+  await page.getByRole("button", { name: "Light", exact: true }).click();
+  await page.getByRole("button", { name: "Accent #5b9be0" }).click();
   await page.getByRole("button", { name: "Open my workspace" }).click();
   await expect(page.locator("h1")).toContainText("Mira");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -571,7 +571,7 @@ test("tasks can be drafted, run, canceled, searched, and exported", async ({
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.locator("h1")).toHaveText("Plan the launch");
   await page.getByRole("button", { name: "Run task", exact: true }).click();
-  await expect(page.getByText("Scout is on it.")).toBeVisible();
+  await expect(page.getByText("Scout is working")).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByText("Canceled", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "All tasks", exact: true }).click();
@@ -672,8 +672,8 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
     .getByRole("textbox", { name: "Command search" })
     .fill("Preferences");
   await page.keyboard.press("Enter");
-  await expect(page.locator("h1")).toHaveText("Make it unmistakably yours.");
-  await page.getByRole("button", { name: "Daylight" }).click();
+  await expect(page.locator("h1")).toHaveText("Preferences");
+  await page.getByRole("button", { name: "Light", exact: true }).click();
   await page.getByRole("checkbox", { name: /Compact sidebar/ }).check();
   await expect(page.locator(".shell")).toHaveClass(/compact-sidebar/);
   await page.reload();

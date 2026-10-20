@@ -112,9 +112,9 @@ fn db_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 fn defaults() -> Value {
-    json!({"workspaceName":"My workspace","ownerName":"","theme":"dark","accent":"#b4a0ff",
-      "density":"comfortable","fontSize":14,"radius":14,"sidebarCompact":false,
-      "reduceMotion":false,"font":"sans","background":"glow","defaultView":"home",
+    json!({"workspaceName":"My workspace","ownerName":"","theme":"dark","accent":"#54c2a4",
+      "density":"comfortable","fontSize":14,"radius":6,"sidebarCompact":false,
+      "reduceMotion":false,"font":"sans","background":"flat","defaultView":"home",
       "showActivity":true,"showStarters":true,"setupComplete":false,"maxSteps":12,"visionProviderId":"",
       "rootStepBudget":60,"maxConcurrentRuns":3,"runInBackground":false,"computerEnabled":false,"computerInput":false,"computerBotIds":[],"computerHideWindow":true,"computerExpiresAt":0})
 }
@@ -214,7 +214,7 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
       CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY,kind TEXT NOT NULL,label TEXT NOT NULL,config TEXT NOT NULL,account TEXT NOT NULL,verified_at INTEGER NOT NULL);").map_err(db_error)?;
     for (table, column, definition) in [
         ("bots", "instructions", "TEXT NOT NULL DEFAULT ''"),
-        ("bots", "color", "TEXT NOT NULL DEFAULT '#b4a0ff'"),
+        ("bots", "color", "TEXT NOT NULL DEFAULT '#54c2a4'"),
         ("bots", "provider_id", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "output", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "error", "TEXT NOT NULL DEFAULT ''"),
@@ -253,7 +253,7 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
       UPDATE tasks SET status='paused',error='The app restarted during this run. Run it again when ready.' WHERE status='running';").map_err(db_error)?;
     db.execute("UPDATE tasks SET status='failed',error='The app restarted while this delegated task was running. Its parent will receive this failure.' WHERE parent_id<>'' AND status='paused' AND waiting_approval=0 AND waiting_child=''",[]).map_err(db_error)?;
     for (id,name,role,description,color,instructions) in [
-      ("research","Scout","Research & synthesis","Turns scattered information into clear decisions.","#b4a0ff","Research carefully. Cite sources returned by tools. Distinguish evidence from inference. Produce a concise, useful result."),
+      ("research","Scout","Research & synthesis","Turns scattered information into clear decisions.","#7aa7e0","Research carefully. Cite sources returned by tools. Distinguish evidence from inference. Produce a concise, useful result."),
       ("operations","Atlas","Planning & operations","Keeps projects organized and moving forward.","#8bd7b6","Turn goals into concrete plans. Highlight priorities, dependencies, and next actions. Ask for approval before external changes."),
       ("code","Forge","Engineering & GitHub","Understands issues and helps ship better software.","#efb47c","Be a precise software teammate. Use repository and issue information when available. Explain changes and tradeoffs clearly."),
     ] {

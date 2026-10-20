@@ -13,12 +13,14 @@ const paths = {
   chevron: "m9 5 7 7-7 7",
   check: "m5 12 4 4L19 6",
   close: "m6 6 12 12M6 18 18 6",
-  spark: "m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z",
+  dot: "M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z",
+  pulse: "M3 12h4l3-7 4 14 3-7h4",
   play: "m8 5 11 7-11 7V5Z",
   stop: "M6 6h12v12H6Z",
   globe:
     "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18Z",
   model: "m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5",
+  models: "m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5",
   github:
     "M9 21v-4c-4 1-4-2-6-3m12 7v-4a3 3 0 0 0-1-2c3-.3 6-1.5 6-7a5 5 0 0 0-1-3 5 5 0 0 0 0-4s-2 0-4 2a12 12 0 0 0-6 0C7 1 5 1 5 1a5 5 0 0 0 0 4 5 5 0 0 0-1 3c0 5.5 3 6.7 6 7a3 3 0 0 0-1 2",
   slack: "M9 3v8H3m12-8v6h6M3 15h6v6m6 0v-6h6",
@@ -42,7 +44,10 @@ const paths = {
   extensions: "M3 3h7v7H3V3ZM14 3h7v7h-7V3ZM3 14h7v7H3v-7ZM14 14h7v7h-7v-7Z",
 };
 const icon = (n) =>
-  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[n] || paths.spark}"/></svg>`;
+  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[n] || paths.dot}"/></svg>`;
+// The product mark: three teammates joined to one workspace, as on the app icon.
+const brandMark = () =>
+  `<svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 9 16 16l8-7M16 16v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="9" r="3.5"/><circle cx="24" cy="9" r="3.5"/><circle cx="16" cy="24" r="3.5"/><circle class="hub" cx="16" cy="16" r="2.2"/></svg>`;
 const esc = (v = "") =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -82,13 +87,15 @@ let data = {
   installedModels = [],
   libraryLoaded = false,
   libraryError = "";
+const defaultAccent = "#54c2a4",
+  legacyAccent = "#b4a0ff";
 const accents = [
-  "#b4a0ff",
-  "#8bd7b6",
-  "#83c9f4",
-  "#efb47c",
-  "#eb97b6",
-  "#b6c7cc",
+  "#54c2a4",
+  "#5b9be0",
+  "#e8836b",
+  "#d4b073",
+  "#e07a9b",
+  "#b6c0c7",
 ];
 const pages = {
   home: "Overview",
@@ -102,6 +109,10 @@ const pages = {
   computer: "Computer",
   settings: "Preferences",
 };
+const navGroups = [
+  ["home", "tasks", "approvals", "schedules"],
+  ["team", "models", "connections", "extensions", "computer"],
+];
 const providers = {
   ollama: {
     label: "Ollama",
@@ -141,6 +152,10 @@ function notify(text, error = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (toast.className = ""), error ? 6500 : 3500);
 }
+const accentOf = (s) =>
+  /^#[0-9a-f]{6}$/i.test(s.accent) && s.accent.toLowerCase() !== legacyAccent
+    ? s.accent
+    : defaultAccent;
 function applyTheme() {
   const s = data.settings,
     h = document.documentElement;
@@ -154,20 +169,24 @@ function applyTheme() {
     density: s.density || "comfortable",
     motion: s.reduceMotion ? "reduced" : "full",
     font: s.font || "sans",
-    background: s.background || "glow",
   }))
     h.dataset[k] = v;
-  h.style.setProperty(
-    "--accent",
-    /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : "#b4a0ff",
-  );
+  h.style.setProperty("--accent", accentOf(s));
   h.style.setProperty("--base-font", `${Number(s.fontSize) || 14}px`);
-  h.style.setProperty("--radius", `${Number(s.radius ?? 14)}px`);
+  h.style.setProperty("--radius", `${Number(s.radius ?? 6)}px`);
 }
+// The CSP allows no inline style attributes, so colours and positions are applied here.
 function colors(scope = document) {
   scope.querySelectorAll("[data-color]").forEach((e) => {
     if (/^#[0-9a-f]{6}$/i.test(e.dataset.color))
-      e.style.setProperty("--bot-color", e.dataset.color);
+      e.style.setProperty(
+        "--bot-color",
+        e.dataset.color.toLowerCase() === legacyAccent ? "#7aa7e0" : e.dataset.color,
+      );
+  });
+  scope.querySelectorAll("[data-left]").forEach((e) => {
+    e.style.left = `${Number(e.dataset.left)}%`;
+    if (e.dataset.width) e.style.width = `${Number(e.dataset.width)}%`;
   });
 }
 function relative(ts) {
@@ -183,12 +202,23 @@ function relative(ts) {
             day: "numeric",
           });
 }
+const duration = (seconds) => {
+  const m = Math.max(1, Math.round(seconds / 60));
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+const clock = (ts) =>
+  new Date(ts * 1000).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const pending = () => data.approvals.filter((a) => a.status === "pending");
 const modelName = (b) =>
   data.connections.find((c) => c.id === b?.providerId)?.config.model ||
-  "Choose a model";
+  "No model";
 const avatar = (b, small = false) =>
-  `<span class="avatar ${small ? "small" : ""}" data-color="${esc(b?.color || "#b4a0ff")}">${esc((b?.name || "T").slice(0, 2))}</span>`;
+  `<span class="avatar ${small ? "small" : ""}" data-color="${esc(b?.color || defaultAccent)}" aria-hidden="true">${esc((b?.name || "T").slice(0, 1).toUpperCase())}</span>`;
+const stateOf = (t) => (t.waitingApproval ? "approval" : t.status);
 const status = (t) =>
   t.waitingApproval
     ? "Needs approval"
@@ -197,11 +227,11 @@ const status = (t) =>
         running: "Working",
         paused: "Paused",
         completed: "Completed",
-        failed: "Needs attention",
+        failed: "Failed",
         canceled: "Canceled",
       }[t.status] || t.status;
 const pill = (t) =>
-  `<span class="pill ${t.waitingApproval ? "approval" : esc(t.status)}"><i></i>${status(t)}</span>`;
+  `<span class="pill ${esc(stateOf(t))}">${status(t)}</span>`;
 const button = (
   action,
   label,
@@ -209,42 +239,137 @@ const button = (
   attrs = "",
   cls = "button primary",
 ) =>
-  `<button class="${cls}" data-action="${action}" ${attrs}>${icon(ic)}<span>${label}</span></button>`;
-const heading = (eyebrow, title, sub, actions = "") =>
-  `<header class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${sub}</p></div><div class="heading-actions">${actions}</div></header>`;
+  `<button class="${cls}" data-action="${action}" ${attrs}>${ic ? icon(ic) : ""}<span>${label}</span></button>`;
+const heading = (title, sub = "", actions = "") =>
+  `<header class="page-heading"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ""}</div>${actions ? `<div class="heading-actions">${actions}</div>` : ""}</header>`;
 const section = (title, sub = "", action = "") =>
-  `<div class="section-heading"><div><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ""}</div>${action}</div>`;
+  `<div class="section-heading"><h2>${title}</h2>${sub ? `<span class="subtle">${sub}</span>` : ""}${action ? `<div class="section-action">${action}</div>` : ""}</div>`;
+const link = (pageId, label) =>
+  `<button class="text-button" data-action="navigate" data-page="${pageId}">${label}</button>`;
 const empty = (ic, title, body, action = "") =>
-  `<div class="empty-state"><span class="empty-icon">${icon(ic)}</span><h3>${title}</h3><p>${body}</p>${action}</div>`;
+  `<div class="empty-state"><h3>${title}</h3><p>${body}</p>${action}</div>`;
 const markdown = (text) =>
   window.marked && window.DOMPurify
     ? DOMPurify.sanitize(marked.parse(text || ""), {
         USE_PROFILES: { html: true },
       })
     : `<p class="plain-output">${esc(text)}</p>`;
-function orbit() {
-  return `<div class="orbit-art" aria-hidden="true"><div class="orbit one"></div><div class="orbit two"></div><div class="orbit three"></div><div class="orbit-center">${icon("spark")}</div>${["github", "slack", "model", "terminal"].map((n, i) => `<span class="orbit-node node-${i}">${icon(n)}</span>`).join("")}<span class="art-caption">A workspace that works with you.</span></div>`;
-}
 function sidebar() {
-  const running = data.tasks.filter((t) => t.status === "running").length;
-  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home"><span class="brand-symbol">${icon("spark")}</span><span>teammate<span class="brand-dot">.</span></span></button><button class="workspace-button" data-action="navigate" data-page="settings"><span class="workspace-monogram">${esc((data.settings.workspaceName || "My workspace")[0])}</span><span><strong>${esc(data.settings.workspaceName)}</strong><small>Personal workspace</small></span>${icon("chevron")}</button><div class="nav-caption">WORKSPACE</div><nav aria-label="Main navigation">${["home", "tasks", "team", "models", "connections", "extensions", "schedules", "computer", "approvals"].map((id) => `<button class="nav-item ${page === id ? "active" : ""}" data-action="navigate" data-page="${id}" aria-label="${pages[id]}" title="${pages[id]}" ${page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${pages[id]}</span>${id === "approvals" && pending().length ? `<b class="nav-count">${pending().length}</b>` : ""}</button>`).join("")}</nav><div class="sidebar-spacer"></div><div class="local-status"><i class="status-dot ${running ? "pulsing" : ""}"></i><span>${running ? `${running} tasks running` : "Your workspace is local"}<small>${data.connections.filter((c) => c.kind === "model").length} model connections</small></span></div><button class="nav-item ${page === "settings" ? "active" : ""}" data-action="navigate" data-page="settings" aria-label="Preferences" title="Preferences">${icon("settings")}<span>Preferences</span></button><div class="sidebar-footer"><span class="profile-avatar">${esc((data.settings.ownerName || "You")[0])}</span><span>${esc(data.settings.ownerName || "Your workspace")}<small>Teammate ${esc(data.device.version || "0.3.0")}</small></span></div></aside>`;
+  const running = data.tasks.filter((t) => t.status === "running").length,
+    models = data.connections.filter((c) => c.kind === "model").length,
+    navItem = (id) =>
+      `<button class="nav-item ${page === id ? "active" : ""}" data-action="navigate" data-page="${id}" aria-label="${pages[id]}" title="${pages[id]}" ${page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${pages[id]}</span>${id === "approvals" && pending().length ? `<b class="nav-count">${pending().length}</b>` : ""}</button>`;
+  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home" aria-label="Teammate overview">${brandMark()}<span>Teammate</span></button><button class="workspace-button" data-action="navigate" data-page="settings" title="Workspace preferences"><strong>${esc(data.settings.workspaceName || "My workspace")}</strong><small>${esc(data.device.os === "windows" ? "This PC" : "This computer")} · local</small></button><nav aria-label="Main navigation">${navGroups.map((g) => `<div class="nav-group">${g.map(navItem).join("")}</div>`).join("")}</nav><div class="sidebar-spacer"></div><div class="local-status" title="${plural(models, "model connection")}"><i class="status-dot ${running ? "live" : ""}"></i><span>${running ? `${plural(running, "task")} running` : "Idle"}<small>${plural(models, "model")} connected</small></span></div>${navItem("settings")}<div class="sidebar-footer"><span class="profile-initial" aria-hidden="true">${esc((data.settings.ownerName || "Y")[0].toUpperCase())}</span><span>${esc(data.settings.ownerName || "You")}<small>Teammate ${esc(data.device.version || "0.3.0")}</small></span></div></aside>`;
 }
 function topbar() {
-  return `<div class="topbar"><div class="breadcrumbs"><span>${esc(data.settings.workspaceName)}</span>${icon("chevron")}<strong>${pages[page]}</strong></div><div class="topbar-right"><button class="search-trigger" data-action="command">${icon("search")}<span>Jump to anything</span><kbd>Ctrl K</kbd></button><button class="icon-button" title="Review approvals" data-action="navigate" data-page="approvals">${icon("approvals")}${pending().length ? '<span class="notification-dot"></span>' : ""}</button></div></div>`;
+  return `<div class="topbar"><div class="breadcrumbs"><span>${esc(data.settings.workspaceName)}</span><span class="crumb-sep">/</span><strong>${pages[page]}</strong></div><div class="topbar-right"><button class="search-trigger" data-action="command">${icon("search")}<span>Jump to anything</span><kbd>Ctrl K</kbd></button><button class="icon-button" title="Review approvals" aria-label="Review approvals" data-action="navigate" data-page="approvals">${icon("approvals")}${pending().length ? '<span class="notification-dot"></span>' : ""}</button></div></div>`;
 }
-function teammateCard(b) {
-  const active = data.tasks.some(
-    (t) => t.botId === b.id && t.status === "running",
-  );
-  return `<button class="teammate-card" data-action="edit-bot" data-id="${esc(b.id)}"><div class="teammate-top">${avatar(b)}<span class="round-arrow">${icon("arrow")}</span></div><h3>${esc(b.name)}</h3><span class="role-label">${esc(b.role)}</span><p>${esc(b.description)}</p><div class="teammate-footer"><i class="status-dot ${active ? "pulsing" : ""}"></i><span>${active ? "Working on a task" : esc(modelName(b))}</span></div></button>`;
+// What a teammate is doing now, in the words the lanes and the team table share.
+function botState(b) {
+  const mine = data.tasks.filter((t) => t.botId === b.id),
+    waiting = mine.find((t) => t.waitingApproval),
+    running = mine.find((t) => t.status === "running"),
+    last = mine
+      .filter((t) => ["completed", "failed", "canceled"].includes(t.status))
+      .sort((x, y) => y.updatedAt - x.updatedAt)[0];
+  if (waiting)
+    return { key: "approval", text: "Waiting on you", task: waiting };
+  if (running)
+    return {
+      key: "running",
+      text: `Working · ${duration(Date.now() / 1000 - running.createdAt)}`,
+      task: running,
+    };
+  if (last?.status === "failed" && Date.now() / 1000 - last.updatedAt < 86400)
+    return { key: "failed", text: "Last run failed", task: last };
+  return {
+    key: "idle",
+    text: last ? `Idle · last run ${relative(last.updatedAt)}` : "No runs yet",
+    task: last,
+  };
 }
-function taskRows(list) {
+function teamLanes() {
+  const end = Date.now() / 1000,
+    start = end - 86400,
+    pos = (ts) => ((Math.max(ts, start) - start) / 86400) * 100,
+    tick = new Date(start * 1000);
+  tick.setMinutes(0, 0, 0);
+  do tick.setHours(tick.getHours() + 1);
+  while (tick.getHours() % 6);
+  const ticks = [];
+  for (; tick.getTime() / 1000 < end - 5400; tick.setHours(tick.getHours() + 6))
+    ticks.push(tick.getTime() / 1000);
+  const lane = (b) => {
+    const s = botState(b),
+      runs = data.tasks.filter(
+        (t) =>
+          t.botId === b.id &&
+          t.status !== "queued" &&
+          (t.status === "running" || t.waitingApproval || t.updatedAt > start),
+      );
+    return `<div class="lane"><button class="lane-label" data-action="edit-bot" data-id="${esc(b.id)}">${avatar(b)}<span><strong>${esc(b.name)}</strong><small class="state-${s.key}">${esc(s.text)}</small></span></button><div class="lane-track">${runs
+      .map((t) => {
+        const until =
+            t.status === "running" || t.waitingApproval ? end : t.updatedAt,
+          left = pos(t.createdAt);
+        return `<button class="run ${esc(stateOf(t))}" data-action="task-detail" data-id="${esc(t.id)}" data-left="${left.toFixed(2)}" data-width="${Math.max(pos(until) - left, 0.5).toFixed(2)}" title="${esc(t.title)} · ${status(t)}" aria-label="${esc(t.title)}, ${status(t)}"></button>`;
+      })
+      .join("")}</div></div>`;
+  };
+  return `<section class="panel lanes-panel">${section("Team, last 24 hours", "", `<span class="legend"><i class="key running"></i>Working<i class="key approval"></i>Waiting on you<i class="key failed"></i>Failed<i class="key completed"></i>Finished</span>`)}<div class="lanes">${data.bots.map(lane).join("") || `<p class="subtle">Add a teammate to see its work here.</p>`}<div class="lane axis" aria-hidden="true"><span></span><div class="lane-track">${ticks.map((t) => `<time data-left="${pos(t).toFixed(2)}">${clock(t)}</time>`).join("")}<time class="now">Now</time></div></div></div></section>`;
+}
+function waitingPanel() {
+  const approvals = pending(),
+    failed = data.tasks
+      .filter(
+        (t) =>
+          t.status === "failed" && Date.now() / 1000 - t.updatedAt < 86400,
+      )
+      .slice(0, 3),
+    rows = [
+      ...approvals.slice(0, 4).map(
+        (a) =>
+          `<li><button class="queue-row" data-action="navigate" data-page="approvals"><span class="pill approval">Approve</span><span><strong>${esc(a.title)}</strong><small>${esc(data.tasks.find((t) => t.id === a.taskId)?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}</small></span></button></li>`,
+      ),
+      ...failed.map(
+        (t) =>
+          `<li><button class="queue-row" data-action="task-detail" data-id="${esc(t.id)}"><span class="pill failed">Failed</span><span><strong>${esc(t.title)}</strong><small>${esc(t.botName)} · ${relative(t.updatedAt)}</small></span></button></li>`,
+      ),
+    ];
+  return `<section class="panel waiting-panel">${section("Waiting on you", rows.length ? String(rows.length) : "", approvals.length ? link("approvals", "Review all") : "")}${rows.length ? `<ul class="queue">${rows.join("")}</ul>` : `<p class="panel-empty">Nothing is waiting for you. Sends, posts and imported tool calls stop here until you decide.</p>`}</section>`;
+}
+function taskRows(list, compact = false) {
   return list
     .map(
       (t) =>
-        `<button class="task-row" data-action="task-detail" data-id="${esc(t.id)}"><span class="task-state ${t.waitingApproval ? "approval" : esc(t.status)}">${icon(t.status === "completed" ? "check" : t.status === "running" ? "spark" : t.waitingApproval ? "approvals" : "file")}</span><span class="task-row-text"><strong>${esc(t.title)}</strong><small>${esc(t.botName)}<span>·</span>${relative(t.updatedAt)}</small></span>${pill(t)}<span class="row-chevron">${icon("chevron")}</span></button>`,
+        `<button class="task-row ${compact ? "compact" : ""}" data-action="task-detail" data-id="${esc(t.id)}"><span class="task-row-text"><strong>${esc(t.title)}</strong>${!compact && t.description ? `<small>${esc(t.description)}</small>` : ""}</span><span class="task-bot">${esc(t.botName)}</span>${pill(t)}<time class="num">${relative(t.updatedAt)}</time></button>`,
     )
     .join("");
+}
+const taskHeader = () =>
+  `<div class="list-header" aria-hidden="true"><span>Task</span><span>Teammate</span><span>Status</span><span class="num">Updated</span></div>`;
+function routinesPanel() {
+  const list = (data.schedules || [])
+    .filter((s) => s.enabled && s.nextRunAt)
+    .sort((a, b) => a.nextRunAt - b.nextRunAt)
+    .slice(0, 3);
+  return `<section class="panel">${section("Next routines", "", link("schedules", "All routines"))}${list.length ? `<ul class="plain-list">${list.map((s) => `<li><span><strong>${esc(s.name)}</strong><small>${esc(data.bots.find((b) => b.id === s.botId)?.name || "Teammate")}</small></span><time class="num">${esc(nextRun(s.nextRunAt))}</time></li>`).join("")}</ul>` : `<p class="panel-empty">No routines scheduled. ${link("schedules", "Create one")}</p>`}</section>`;
+}
+function nextRun(ts) {
+  const d = new Date(ts * 1000),
+    today = new Date(),
+    tomorrow = new Date(Date.now() + 86400000);
+  const day =
+    d.toDateString() === today.toDateString()
+      ? "Today"
+      : d.toDateString() === tomorrow.toDateString()
+        ? "Tomorrow"
+        : d.toLocaleDateString(undefined, { weekday: "short" });
+  return `${day} ${clock(ts)}`;
+}
+function modelsPanel() {
+  const list = data.connections.filter((c) => c.kind === "model");
+  return `<section class="panel">${section("Models", "", link("connections", "Manage"))}${list.length ? `<ul class="plain-list">${list.map((c) => `<li><span><strong>${esc(c.label)}</strong><small>${esc(c.config.model)}</small></span><span class="subtle">${plural(data.bots.filter((b) => b.providerId === c.id).length, "teammate")}</span></li>`).join("")}</ul>` : `<p class="panel-empty">No model connected yet. ${link("connections", "Connect one")}</p>`}</section>`;
 }
 function checklist() {
   const n = [
@@ -252,41 +377,37 @@ function checklist() {
     data.connections.some((c) => c.kind === "model"),
     data.connections.some((c) => c.kind !== "model"),
   ];
-  return `<button class="setup-banner" data-action="setup"><span class="setup-banner-icon">${icon("spark")}</span><span class="setup-banner-copy"><strong>Make yourself at home</strong><small>Connect your intelligence, bring your apps, make it yours.</small></span><span class="setup-progress">${n.map((x) => `<i class="${x ? "done" : ""}"></i>`).join("")}<small>${n.filter(Boolean).length} of 3</small></span>${icon("arrow")}</button>`;
+  return `<button class="setup-banner" data-action="setup"><span><strong>Finish setting up</strong><small>Your name, a model, and one connected tool.</small></span><span class="setup-progress" aria-label="${n.filter(Boolean).length} of 3 done">${n.map((x) => `<i class="${x ? "done" : ""}"></i>`).join("")}</span><span class="subtle num">${n.filter(Boolean).length} of 3</span>${icon("chevron")}</button>`;
+}
+function overviewLine() {
+  const working = data.tasks.filter((t) => t.status === "running").length,
+    waiting = pending().length,
+    failed = data.tasks.filter(
+      (t) => t.status === "failed" && Date.now() / 1000 - t.updatedAt < 86400,
+    ).length,
+    parts = [
+      working
+        ? `${plural(working, "task")} running`
+        : "No tasks running",
+      waiting
+        ? `<b class="warn">${plural(waiting, "action")} waiting for your approval</b>`
+        : "",
+      failed ? `<b class="bad">${plural(failed, "task")} failed today</b>` : "",
+    ];
+  return parts.filter(Boolean).join(" · ");
 }
 function homeView() {
-  const h = new Date().getHours(),
-    g = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening",
-    name = data.settings.ownerName
-      ? `, ${esc(data.settings.ownerName.split(" ")[0])}`
-      : "",
-    hasModel = data.connections.some((c) => c.kind === "model");
-  return `${heading("YOUR PERSONAL WORKSPACE", `${g}${name}<span class="heading-period">.</span>`, "A little less busywork. A lot more possibility.", button("new-task", "New task"))}<section class="hero"><div class="hero-copy"><span class="hero-label">YOUR IDEAS, IN MOTION</span><h2>Big plans.<br><em>A little help.</em></h2><p>Give your teammates a goal.<br>Make room for the work that matters.</p></div>${orbit()}<div class="composer"><textarea id="home-prompt" rows="2" aria-label="Task goal" placeholder="What can we take off your plate?">${esc(composerDraft)}</textarea><div class="composer-bottom"><div class="composer-select">${icon("team")}<select id="home-bot" aria-label="Assign to teammate">${data.bots.map((b) => `<option value="${esc(b.id)}" ${composerBot === b.id ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></div><span class="composer-hint">${hasModel ? "Your models. Your workspace." : "Connect a model to start."}</span>${button(hasModel ? "submit-home" : "connect-model", hasModel ? "Start task" : "Connect a model", hasModel ? "arrow" : "model")}</div></div></section>${!data.settings.setupComplete ? checklist() : ""}<section>${section("Your team", "A little expertise for every kind of work.", `<button class="text-button" data-action="navigate" data-page="team">Manage team ${icon("arrow")}</button>`)}<div class="team-grid">${data.bots.slice(0, 3).map(teammateCard).join("")}</div></section>${
+  const hasModel = data.connections.some((c) => c.kind === "model"),
+    starters = [
+      ["github", "Triage my GitHub issues"],
+      ["slack", "Catch me up on Slack"],
+      ["plan", "Turn a goal into a plan"],
+    ];
+  return `${heading(esc(data.settings.workspaceName || "My workspace"), overviewLine(), button("new-task", "New task"))}${!data.settings.setupComplete ? checklist() : ""}<section class="composer"><label class="visually-hidden" for="home-prompt">Task goal</label><textarea id="home-prompt" rows="2" aria-label="Task goal" placeholder="Give a teammate a task. Paste context, links, or a goal.">${esc(composerDraft)}</textarea><div class="composer-bottom"><label class="composer-select"><span>Assign to</span><select id="home-bot" aria-label="Assign to teammate">${data.bots.map((b) => `<option value="${esc(b.id)}" ${composerBot === b.id ? "selected" : ""}>${esc(b.name)} · ${esc(modelName(b))}</option>`).join("")}</select></label>${
     data.settings.showStarters
-      ? `<section>${section("A good place to start")}<div class="starter-grid">${[
-          [
-            "github",
-            "Tame the issue backlog",
-            "Turn open issues into an action plan.",
-          ],
-          [
-            "slack",
-            "Catch up without the scroll",
-            "Find what matters in your channels.",
-          ],
-          [
-            "plan",
-            "Make a plan that sticks",
-            "Turn a big goal into useful next steps.",
-          ],
-        ]
-          .map(
-            ([id, title, desc]) =>
-              `<button class="starter" data-action="starter" data-template="${id}"><span class="app-mark ${id}">${icon(id === "plan" ? "spark" : id)}</span><span><strong>${title}</strong><small>${desc}</small></span>${icon("arrow")}</button>`,
-          )
-          .join("")}</div></section>`
+      ? `<div class="starters">${starters.map(([id, label]) => `<button class="starter" data-action="starter" data-template="${id}">${label}</button>`).join("")}</div>`
       : ""
-  }<section>${section("Recent work", `${data.tasks.filter((t) => t.status === "completed").length} completed · ${data.tasks.filter((t) => t.status === "running").length} in progress`, `<button class="text-button" data-action="navigate" data-page="tasks">All tasks ${icon("arrow")}</button>`)}<div class="panel task-list">${data.tasks.length ? taskRows(data.tasks.slice(0, 5)) : empty("tasks", "Room for your first win", "Your tasks and finished work will collect here.", button("new-task", "Create a task", "plus", "", "button secondary"))}</div></section>${data.settings.showActivity ? `<div class="workspace-note">${icon("key")}<span>Private by design. Tasks stay on this device. Connections use your own accounts and keys.</span></div>` : ""}`;
+  }${button(hasModel ? "submit-home" : "connect-model", hasModel ? "Start task" : "Connect a model", hasModel ? "arrow" : "model", "", "button primary")}</div></section><div class="grid two-one">${teamLanes()}${waitingPanel()}</div><div class="grid two-one"><section class="panel">${section("Recent tasks", `${data.tasks.filter((t) => t.status === "completed").length} completed`, link("tasks", "All tasks"))}${data.tasks.length ? `<div class="task-list">${taskHeader()}${taskRows(data.tasks.slice(0, 6), true)}</div>` : `<p class="panel-empty">No tasks yet. Write one above and choose who takes it.</p>`}</section><div class="stack">${routinesPanel()}${modelsPanel()}</div></div>${data.settings.showActivity ? `<p class="workspace-note">${icon("key")}<span>Tasks, results and history are stored on this computer. Keys live in your OS credential store.</span></p>` : ""}`;
 }
 function filteredTasks() {
   const list = data.tasks.filter(
@@ -300,30 +421,37 @@ function filteredTasks() {
         .includes(taskSearch.toLowerCase()),
   );
   return list.length
-    ? taskRows(list)
+    ? taskHeader() + taskRows(list)
     : empty(
         "tasks",
-        taskSearch ? "Nothing matched that search" : "A clear canvas",
+        taskSearch ? "Nothing matches that search" : "No tasks here",
         "Try another filter, or give a teammate a new task.",
         button("new-task", "Create a task", "plus", "", "button secondary"),
       );
 }
 function tasksView() {
+  const count = (id) =>
+    id === "all"
+      ? data.tasks.length
+      : id === "attention"
+        ? data.tasks.filter((t) => t.status === "failed" || t.waitingApproval)
+            .length
+        : data.tasks.filter((t) => t.status === id).length;
   return selectedTask
     ? taskDetail()
-    : `${heading("THE WORK, ALL IN ONE PLACE", "From idea to done.", "Start something new, pick up a draft, or revisit a result.", button("new-task", "New task"))}<div class="filter-toolbar"><div class="tabs" aria-label="Task filters">${[
-        ["all", "All tasks"],
+    : `${heading("Tasks", `${plural(data.tasks.length, "task")} · ${data.tasks.filter((t) => t.status === "running").length} running · ${pending().length} waiting on you`, button("new-task", "New task"))}<div class="filter-toolbar"><div class="tabs" role="tablist" aria-label="Task filters">${[
+        ["all", "All"],
         ["running", "Working"],
         ["completed", "Completed"],
         ["attention", "Needs attention"],
       ]
         .map(
           ([id, label]) =>
-            `<button class="tab ${taskFilter === id ? "active" : ""}" data-action="task-filter" data-filter="${id}">${label}</button>`,
+            `<button class="tab ${taskFilter === id ? "active" : ""}" role="tab" aria-selected="${taskFilter === id}" data-action="task-filter" data-filter="${id}">${label} <span class="num">${count(id)}</span></button>`,
         )
         .join(
           "",
-        )}</div><label class="search-field">${icon("search")}<input id="task-search" type="search" value="${esc(taskSearch)}" placeholder="Find a task…" aria-label="Search tasks"></label></div><div id="task-list" class="panel task-list">${filteredTasks()}</div>`;
+        )}</div><label class="search-field">${icon("search")}<input id="task-search" type="search" value="${esc(taskSearch)}" placeholder="Find a task" aria-label="Search tasks"></label></div><div id="task-list" class="task-list">${filteredTasks()}</div>`;
 }
 function taskDetail() {
   const t = data.tasks.find((t) => t.id === selectedTask);
@@ -333,28 +461,32 @@ function taskDetail() {
   }
   const b = data.bots.find((b) => b.id === t.botId),
     a = pending().find((a) => a.taskId === t.id);
-  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="task-heading"><div>${pill(t)}<h1>${esc(t.title)}</h1><p>${avatar(b, true)} ${esc(t.botName)} <span>·</span> ${esc(modelName(b))}</p></div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}${a ? approvalCard(a) : ""}${delegationDetail(t)}<div class="task-detail-grid"><section class="panel result-panel"><div class="panel-heading"><h2>${t.output ? "The result" : "Your task"}</h2><div>${t.output ? `<button class="icon-button" title="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" data-action="export-result">${icon("download")}</button>` : ""}</div></div>${t.output ? `<article class="markdown">${markdown(t.output)}</article>` : t.status === "running" ? `<div class="working-state"><div class="thinking-orb">${icon("spark")}</div><h3>${esc(t.botName)} is on it.</h3><p>${esc(events.at(-1)?.message || "Starting your task…")}</p><span class="animated-dots"><i></i><i></i><i></i></span></div>` : `<div class="task-brief"><h3>${esc(t.title)}</h3><p>${esc(t.description || "No additional details.")}</p>${t.status === "queued" ? '<span class="subtle">Ready when you are. Run this task to get started.</span>' : ""}</div>`}</section><aside class="panel activity-panel"><div class="panel-heading"><h2>Activity</h2><span class="subtle">${events.length} events</span></div><ol class="timeline">${events.map((e, i) => `<li><i class="timeline-dot ${i === events.length - 1 && t.status === "running" ? "live" : ""}"></i><div><p>${esc(e.message)}</p><time>${new Date(e.createdAt * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time></div></li>`).join("")}</ol><div class="activity-footnote">${icon("approvals")} External changes wait for your approval.</div></aside></div>`;
+  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="page-heading task-heading"><div><h1>${esc(t.title)}</h1><p>${pill(t)}<span>${avatar(b, true)} ${esc(t.botName)}</span><span>${esc(modelName(b))}</span><span>Started ${relative(t.createdAt)}</span></p></div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}${a ? approvalCard(a) : ""}${delegationDetail(t)}<div class="task-detail-grid"><section class="panel result-panel">${section(t.output ? "Result" : "Brief", "", t.output ? `<button class="icon-button" title="Copy result" aria-label="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" aria-label="Export Markdown" data-action="export-result">${icon("download")}</button>` : "")}${t.output ? `<article class="markdown">${markdown(t.output)}</article>` : t.status === "running" ? `<div class="working-state"><p><i class="status-dot live"></i><strong>${esc(t.botName)} is working</strong></p><p class="subtle">${esc(events.at(-1)?.message || "Starting the task")}</p><p class="brief-text">${esc(t.description || "")}</p></div>` : `<div class="task-brief"><p>${esc(t.description || "No additional details.")}</p>${t.status === "queued" ? '<p class="subtle">This is a draft. Run it when the brief is ready.</p>' : ""}</div>`}</section><aside class="panel activity-panel">${section("Activity", plural(events.length, "event"))}<ol class="timeline">${events.map((e, i) => `<li class="${i === events.length - 1 && t.status === "running" ? "live" : ""}"><time class="num">${clock(e.createdAt)}</time><p>${esc(e.message)}</p></li>`).join("")}</ol><p class="activity-footnote">${icon("approvals")} Sends, posts and imported tools wait for your approval.</p></aside></div>`;
 }
 function teamView() {
-  return `${heading("A TEAM THAT FITS YOU", "Different strengths.<br>One shared workspace.", "Give each teammate its own role, instructions, personality, and model.", button("edit-bot", "New teammate"))}<div class="team-grid expanded">${data.bots.map(teammateCard).join("")}<button class="add-teammate" data-action="edit-bot">${icon("plus")}<strong>A role only you can imagine</strong><span>Create a teammate from scratch</span></button></div><div class="info-strip">${icon("model")}<span>Every teammate can use connected tools. Its model and instructions shape how it works.</span></div>`;
+  return `${heading("Teammates", `${plural(data.bots.length, "teammate")} · each with its own model, instructions and private workspace`, button("edit-bot", "New teammate"))}<section class="panel"><div class="list-header team-header" aria-hidden="true"><span>Teammate</span><span>Model</span><span>Now</span><span class="num">Tasks</span></div>${data.bots.map(teammateCard).join("") || empty("team", "No teammates yet", "Create one and give it a role and a model.")}</section><p class="workspace-note">${icon("model")}<span>Every teammate can use the connected tools. Its model and instructions decide how it works.</span></p>`;
+}
+function teammateCard(b) {
+  const s = botState(b);
+  return `<button class="teammate-card" data-action="edit-bot" data-id="${esc(b.id)}">${avatar(b)}<span class="teammate-name"><strong>${esc(b.name)}</strong><small>${esc(b.role)}</small></span><span class="teammate-model">${esc(modelName(b))}</span><span class="state-${s.key}">${esc(s.text)}</span><span class="num">${data.tasks.filter((t) => t.botId === b.id).length}</span></button>`;
 }
 const catalog = [
   {
     id: "local",
     kind: "model",
     ic: "terminal",
-    name: "Local intelligence",
-    tag: "ON YOUR DEVICE",
-    desc: "Bring Ollama, LM Studio, vLLM, or a compatible local server.",
-    sub: "Your hardware. Your models. Your rules.",
+    name: "Local models",
+    tag: "On this computer",
+    desc: "Ollama, LM Studio, vLLM, or any compatible local server.",
+    sub: "No key needed for most local servers.",
   },
   {
     id: "cloud",
     kind: "model",
     ic: "globe",
-    name: "Cloud intelligence",
-    tag: "BRING YOUR KEY",
-    desc: "Connect OpenAI, OpenRouter, Groq, or your own compatible endpoint.",
+    name: "Cloud models",
+    tag: "Your API key",
+    desc: "OpenAI, OpenRouter, Groq, or your own compatible endpoint.",
     sub: "Chat Completions and Responses APIs.",
   },
   {
@@ -362,27 +494,27 @@ const catalog = [
     kind: "github",
     ic: "github",
     name: "GitHub",
-    tag: "CODE & PROJECTS",
-    desc: "Explore repositories, understand open issues, and draft new ones.",
-    sub: "Publishing issues requires your approval.",
+    tag: "Code and issues",
+    desc: "Browse repositories, read open issues, and draft new ones.",
+    sub: "Creating issues needs your approval.",
   },
   {
     id: "slack",
     kind: "slack",
     ic: "slack",
     name: "Slack",
-    tag: "TEAM COMMUNICATION",
-    desc: "Read channel context, catch up, and prepare thoughtful updates.",
-    sub: "Sending messages requires your approval.",
+    tag: "Channels",
+    desc: "Read channel history, summarise threads, and draft updates.",
+    sub: "Sending messages needs your approval.",
   },
   {
     id: "mcp",
     kind: "mcp",
     ic: "connections",
     name: "MCP servers",
-    tag: "BRING YOUR TOOLS",
+    tag: "Your tools",
     desc: "Import a Streamable HTTP MCP server and discover its tools.",
-    sub: "Review imported tool calls before they run.",
+    sub: "Each imported tool call needs your approval.",
   },
 ];
 function connectionsView() {
@@ -391,92 +523,109 @@ function connectionsView() {
       connectionFilter === "all" ||
       (connectionFilter === "models" ? c.kind === "model" : c.kind !== "model"),
   );
-  return `${heading("YOUR WORK, CONNECTED", "Bring your world in.", "Choose your intelligence. Connect the tools you already use.", button("connect-mcp", "Add MCP server", "plus", "", "button secondary"))}${data.connections.length ? `<section>${section("Connected to your workspace", `${data.connections.length} connections · secrets saved in your OS credential store`)}<div class="connected-list">${data.connections.map((c) => `<article class="connected-row"><span class="app-mark ${esc(c.kind)}">${icon(c.kind === "model" ? "model" : c.kind === "mcp" ? "connections" : c.kind)}</span><span class="connection-identity"><strong>${esc(c.label)} <i class="verified-dot"></i></strong><small>${esc(c.account)}</small></span><span class="last-verified">Verified ${relative(c.verifiedAt)}</span><div class="row-actions">${c.kind !== "model" ? `<button class="button small secondary" data-action="browse" data-id="${esc(c.id)}">Browse</button>` : ""}<button class="icon-button" title="Test ${esc(c.label)}" data-action="test-connection" data-id="${esc(c.id)}">${icon("refresh")}</button><button class="icon-button" title="Manage ${esc(c.label)}" data-action="edit-connection" data-id="${esc(c.id)}">${icon("settings")}</button></div></article>`).join("")}</div></section>` : ""}<section>${section("Make more possible")}<div class="tabs catalog-tabs">${[
-    ["all", "All connections"],
+  const kindName = { model: "Model", github: "GitHub", slack: "Slack", mcp: "MCP server" };
+  return `${heading("Connections", `${plural(data.connections.length, "connection")} · secrets stay in your OS credential store`, button("connect-mcp", "Add MCP server", "plus", "", "button secondary"))}${data.connections.length ? `<section class="panel">${section("Connected")}<div class="list-header connected-header" aria-hidden="true"><span>Name</span><span>Type</span><span class="num">Verified</span><span></span></div><div class="connected-list">${data.connections.map((c) => `<article class="connected-row"><span class="connection-identity">${icon(c.kind === "model" ? "model" : c.kind === "mcp" ? "connections" : c.kind)}<span><strong>${esc(c.label)}</strong><small>${esc(c.account)}</small></span></span><span class="subtle">${kindName[c.kind] || esc(c.kind)}</span><time class="num">${relative(c.verifiedAt)}</time><div class="row-actions">${c.kind !== "model" ? `<button class="button small secondary" data-action="browse" data-id="${esc(c.id)}">Browse</button>` : ""}<button class="icon-button" title="Test ${esc(c.label)}" aria-label="Test ${esc(c.label)}" data-action="test-connection" data-id="${esc(c.id)}">${icon("refresh")}</button><button class="icon-button" title="Manage ${esc(c.label)}" aria-label="Manage ${esc(c.label)}" data-action="edit-connection" data-id="${esc(c.id)}">${icon("settings")}</button></div></article>`).join("")}</div></section>` : ""}<section class="panel">${section("Add a connection")}<div class="tabs catalog-tabs" role="tablist">${[
+    ["all", "All"],
     ["models", "Models"],
-    ["apps", "Apps & tools"],
+    ["apps", "Apps and tools"],
   ]
     .map(
       ([id, label]) =>
-        `<button class="tab ${connectionFilter === id ? "active" : ""}" data-action="connection-filter" data-filter="${id}">${label}</button>`,
+        `<button class="tab ${connectionFilter === id ? "active" : ""}" role="tab" aria-selected="${connectionFilter === id}" data-action="connection-filter" data-filter="${id}">${label}</button>`,
     )
     .join(
       "",
-    )}</div><div class="catalog-grid">${cards.map((c) => `<article class="catalog-card"><div class="catalog-card-top"><span class="app-mark large ${c.kind}">${icon(c.ic)}</span><span class="catalog-tag">${c.tag}</span></div><h3>${c.name}</h3><p>${c.desc}</p><small>${c.sub}</small><button class="button secondary" data-action="connect-catalog" data-kind="${c.kind}" data-preset="${c.id === "local" ? "ollama" : c.id === "cloud" ? "openai" : ""}">${icon("plus")} Connect ${c.kind === "model" ? "a model" : c.kind === "mcp" ? "a server" : c.name}</button></article>`).join("")}</div></section>`;
+    )}</div><div class="catalog-list">${cards.map((c) => `<article class="catalog-card">${icon(c.ic)}<div class="catalog-text"><h3>${c.name}</h3><p>${c.desc}</p><small>${c.tag} · ${c.sub}</small></div><button class="button secondary" data-action="connect-catalog" data-kind="${c.kind}" data-preset="${c.id === "local" ? "ollama" : c.id === "cloud" ? "openai" : ""}">${icon("plus")} Connect ${c.kind === "model" ? "a model" : c.kind === "mcp" ? "a server" : c.name}</button></article>`).join("")}</div></section>`;
 }
 function approvalCard(a) {
-  return `<article class="approval-card"><div class="approval-header"><span class="approval-emblem">${icon("approvals")}</span><div><span class="eyebrow">YOUR CALL</span><h3>${esc(a.title)}</h3><p>${esc(a.target)} · ${relative(a.createdAt)}</p></div></div><p>${esc(a.summary)}</p><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre><div class="approval-actions"><button class="button secondary" data-action="decide" data-id="${esc(a.id)}" data-decision="rejected">Reject action</button><button class="button primary" data-action="decide" data-id="${esc(a.id)}" data-decision="approved">${icon("check")} Approve & continue</button></div></article>`;
+  const t = data.tasks.find((t) => t.id === a.taskId);
+  return `<article class="approval-card"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">Needs approval</span></header>${a.summary ? `<p>${esc(a.summary)}</p>` : ""}<pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre><div class="approval-actions"><button class="button secondary" data-action="decide" data-id="${esc(a.id)}" data-decision="rejected">Reject action</button><button class="button primary" data-action="decide" data-id="${esc(a.id)}" data-decision="approved">${icon("check")} Approve & continue</button></div></article>`;
 }
 function approvalsView() {
-  return `${heading("YOU STAY IN CONTROL", "A moment for your judgment.", "Review the exact changes your teammates want to make.")}<div class="approval-grid">${pending().length ? pending().map(approvalCard).join("") : empty("approvals", "You’re all clear", "Publishing, sending, and imported tool calls will wait here for your review.")}</div>${
-    data.approvals.some((a) => a.status !== "pending")
-      ? `<section>${section("Previous decisions")}<div class="panel">${data.approvals
-          .filter((a) => a.status !== "pending")
+  const done = data.approvals.filter((a) => a.status !== "pending");
+  return `${heading("Approvals", pending().length ? `${plural(pending().length, "action")} waiting · nothing runs until you decide` : "Sends, posts, issues and imported tool calls stop here for your decision")}<div class="approval-grid">${pending().length ? pending().map(approvalCard).join("") : `<section class="panel">${empty("approvals", "You’re all clear", "Nothing is waiting for your approval.")}</section>`}</div>${
+    done.length
+      ? `<section class="panel">${section("Previous decisions", plural(done.length, "decision"))}<div class="list-header decision-header" aria-hidden="true"><span>Action</span><span>Target</span><span>Decision</span><span class="num">When</span></div>${done
           .slice(0, 10)
           .map(
             (a) =>
-              `<div class="decision-row">${icon(a.status === "approved" ? "check" : "close")}<span><strong>${esc(a.title)}</strong><small>${esc(a.target)}</small></span><span class="subtle">${esc(a.status)}</span></div>`,
+              `<div class="decision-row"><strong>${esc(a.title)}</strong><span class="subtle">${esc(a.target)}</span><span class="pill ${a.status === "approved" ? "completed" : "canceled"}">${a.status === "approved" ? "Approved" : "Rejected"}</span><time class="num">${relative(a.createdAt)}</time></div>`,
           )
-          .join("")}</div></section>`
+          .join("")}</section>`
       : ""
   }`;
 }
 function themeChoices() {
-  return `<div class="theme-choices">${[
-    ["dark", "Midnight", "moon"],
-    ["light", "Daylight", "sun"],
+  return `<div class="theme-choices" role="group" aria-label="Theme">${[
+    ["dark", "Dark", "moon"],
+    ["light", "Light", "sun"],
     ["system", "System", "monitor"],
   ]
     .map(
       ([v, name, ic]) =>
-        `<button class="theme-choice ${data.settings.theme === v ? "selected" : ""}" data-action="set-pref" data-key="theme" data-value="${v}"><span class="theme-preview ${v}"><i></i><i></i><i></i></span><span>${icon(ic)}${name}${data.settings.theme === v ? icon("check") : ""}</span></button>`,
+        `<button class="theme-choice ${data.settings.theme === v ? "selected" : ""}" aria-pressed="${data.settings.theme === v}" data-action="set-pref" data-key="theme" data-value="${v}">${icon(ic)}<span>${name}</span></button>`,
     )
     .join("")}</div>`;
 }
 function accentChoices() {
-  return `<div class="accent-choices">${accents.map((v) => `<button class="color-swatch ${data.settings.accent === v ? "selected" : ""}" data-color="${v}" aria-label="Accent ${v}" data-action="set-pref" data-key="accent" data-value="${v}">${data.settings.accent === v ? icon("check") : ""}</button>`).join("")}<label class="custom-color" title="Custom accent">${icon("plus")}<input type="color" data-pref="accent" value="${esc(data.settings.accent)}" aria-label="Custom accent color"></label><span class="subtle accent-code">${esc(data.settings.accent)}</span></div>`;
+  const current = accentOf(data.settings);
+  return `<div class="accent-choices">${accents.map((v) => `<button class="color-swatch ${current === v ? "selected" : ""}" data-color="${v}" aria-label="Accent ${v}" aria-pressed="${current === v}" data-action="set-pref" data-key="accent" data-value="${v}"></button>`).join("")}<label class="custom-color" title="Custom accent">${icon("plus")}<input type="color" data-pref="accent" value="${esc(current)}" aria-label="Custom accent color"></label><span class="subtle accent-code num">${esc(current)}</span></div>`;
 }
 const toggle = (key, title, desc) =>
   `<label class="toggle-row"><span><strong>${title}</strong><small>${desc}</small></span><input class="toggle" type="checkbox" data-pref="${key}" ${data.settings[key] ? "checked" : ""}></label>`;
+const settingRow = (title, desc, body, cls = "") =>
+  `<section class="setting-row ${cls}"><div class="setting-label"><h2>${title}</h2><p>${desc}</p></div><div class="setting-panel">${body}</div></section>`;
 function settingsView() {
   const s = data.settings;
-  return `${heading("YOUR SPACE, YOUR WAY", "Make it unmistakably yours.", "Changes save on this device and preview immediately.")}<div class="preferences-grid"><div><section class="panel preference-section"><div class="panel-heading"><h2>Look & feel</h2>${icon("sun")}</div><div class="preference-body"><label class="field-label">Theme</label>${themeChoices()}<label class="field-label spaced">Your accent</label>${accentChoices()}<div class="two-columns spaced"><label class="field"><span>Density</span><select data-pref="density"><option value="comfortable" ${s.density === "comfortable" ? "selected" : ""}>Comfortable</option><option value="compact" ${s.density === "compact" ? "selected" : ""}>Compact</option></select></label><label class="field"><span>Typography</span><select data-pref="font"><option value="sans" ${s.font === "sans" ? "selected" : ""}>Clean sans serif</option><option value="mono" ${s.font === "mono" ? "selected" : ""}>Monospace</option></select></label></div>${[
-    ["fontSize", "Text size", 12, 18],
-    ["radius", "Corner radius", 0, 24],
-  ]
-    .map(
-      ([key, title, min, max]) =>
-        `<label class="range-field"><span>${title}<output>${s[key]}px</output></span><input type="range" min="${min}" max="${max}" step="1" data-pref="${key}" value="${s[key]}"></label>`,
-    )
-    .join(
-      "",
-    )}${toggle("sidebarCompact", "Compact sidebar", "Keep just the icons and give your work more room.")}${toggle("reduceMotion", "Reduced motion", "Use fewer transitions and animations.")}<label class="field spaced"><span>Workspace atmosphere</span><select data-pref="background"><option value="glow" ${s.background === "glow" ? "selected" : ""}>Subtle ambient glow</option><option value="flat" ${s.background === "flat" ? "selected" : ""}>Quiet, flat surfaces</option></select></label></div></section><section class="panel preference-section"><div class="panel-heading"><h2>Workspace & behavior</h2>${icon("settings")}</div><div class="preference-body"><div class="two-columns"><label class="field"><span>Workspace name</span><input data-pref="workspaceName" maxlength="60" value="${esc(s.workspaceName)}"></label><label class="field"><span>Your name</span><input data-pref="ownerName" maxlength="60" value="${esc(s.ownerName)}" placeholder="What should we call you?"></label></div><div class="two-columns spaced"><label class="field"><span>Open on</span><select data-pref="defaultView">${["home", "tasks", "team", "connections"].map((v) => `<option value="${v}" ${s.defaultView === v ? "selected" : ""}>${pages[v]}</option>`).join("")}</select></label><label class="field"><span>Maximum steps per run</span><input type="number" min="1" max="30" data-pref="maxSteps" value="${s.maxSteps}"></label></div>${toggle("showStarters", "Show quick starts", "Useful starting points on your overview.")}${toggle("showActivity", "Show privacy note", "A quiet reminder of where your data lives.")}</div></section>${visionSettings()}</div><aside class="preferences-aside"><section class="panel"><div class="panel-heading"><h2>Keep your setup</h2></div><div class="preference-body"><p class="subtle">Export your appearance and workspace preferences. Keys and connected accounts are never included.</p><button class="button secondary full" data-action="export-settings">${icon("download")} Export preferences</button><label class="button quiet full file-label">${icon("upload")} Import preferences<input type="file" accept="application/json,.json" id="import-settings"></label></div></section><section class="panel"><div class="panel-heading"><h2>A few shortcuts</h2></div><div class="shortcut-list"><span>Jump to anything <kbd>Ctrl K</kbd></span><span>New task <kbd>N</kbd></span><span>Close a panel <kbd>Esc</kbd></span></div></section><section class="panel device-card">${icon("monitor")}<h3>Built for this device</h3><p>${esc(data.device.os)} · ${esc(data.device.arch)}<br>${data.device.threads} CPU threads available</p><span class="pill completed"><i></i>Local storage</span></section><button class="text-button" data-action="setup">${icon("spark")} Revisit guided setup</button></aside></div>`;
+  return `${heading("Preferences", "Saved on this computer and applied as you change them.", `<button class="text-button" data-action="setup">${icon("refresh")} Revisit guided setup</button>`)}<div class="settings">${settingRow(
+    "Appearance",
+    "Theme, accent and type for this workspace.",
+    `<span class="field-label">Theme</span>${themeChoices()}<span class="field-label spaced">Accent</span>${accentChoices()}<div class="two-columns spaced"><label class="field"><span>Density</span><select data-pref="density"><option value="comfortable" ${s.density === "comfortable" ? "selected" : ""}>Comfortable</option><option value="compact" ${s.density === "compact" ? "selected" : ""}>Compact</option></select></label><label class="field"><span>Typeface</span><select data-pref="font"><option value="sans" ${s.font !== "mono" ? "selected" : ""}>Public Sans</option><option value="mono" ${s.font === "mono" ? "selected" : ""}>Monospace</option></select></label></div>${[
+      ["fontSize", "Text size", 12, 18],
+      ["radius", "Corner radius", 0, 16],
+    ]
+      .map(
+        ([key, title, min, max]) =>
+          `<label class="range-field"><span>${title}<output class="num">${s[key]}px</output></span><input type="range" min="${min}" max="${max}" step="1" data-pref="${key}" value="${s[key]}"></label>`,
+      )
+      .join(
+        "",
+      )}${toggle("sidebarCompact", "Compact sidebar", "Show icons only and give the work more width.")}${toggle("reduceMotion", "Reduced motion", "Turn off transitions.")}`,
+  )}${settingRow(
+    "Workspace",
+    "Names, the first screen, and how long a run may go on.",
+    `<div class="two-columns"><label class="field"><span>Workspace name</span><input data-pref="workspaceName" maxlength="60" value="${esc(s.workspaceName)}"></label><label class="field"><span>Your name</span><input data-pref="ownerName" maxlength="60" value="${esc(s.ownerName)}" placeholder="First name"></label></div><div class="two-columns spaced"><label class="field"><span>Open on</span><select data-pref="defaultView">${["home", "tasks", "team", "connections"].map((v) => `<option value="${v}" ${s.defaultView === v ? "selected" : ""}>${pages[v]}</option>`).join("")}</select></label><label class="field"><span>Maximum steps per run</span><input type="number" min="1" max="30" data-pref="maxSteps" value="${s.maxSteps}"></label></div>${toggle("showStarters", "Suggested tasks", "Show three starting points under the task box.")}${toggle("showActivity", "Storage note", "Show where tasks and keys are stored.")}`,
+  )}${visionSettings()}${settingRow(
+    "Backup",
+    "Appearance and workspace preferences only. Keys and accounts are never exported.",
+    `<div class="button-row"><button class="button secondary" data-action="export-settings">${icon("download")} Export preferences</button><label class="button quiet file-label">${icon("upload")} Import preferences<input type="file" accept="application/json,.json" id="import-settings"></label></div>`,
+  )}${settingRow(
+    "This computer",
+    "Where Teammate runs and the shortcuts it listens for.",
+    `<dl class="facts"><div><dt>System</dt><dd>${esc(data.device.os)} · ${esc(data.device.arch)}</dd></div><div><dt>CPU threads</dt><dd class="num">${esc(data.device.threads)}</dd></div><div><dt>Storage</dt><dd>Local SQLite</dd></div><div><dt>Jump to anything</dt><dd><kbd>Ctrl K</kbd></dd></div><div><dt>New task</dt><dd><kbd>N</kbd></dd></div><div><dt>Close a panel</dt><dd><kbd>Esc</kbd></dd></div></dl>`,
+  )}</div>`;
 }
 function setupView() {
-  const names = ["Your space", "Intelligence", "Connections", "Your style"];
+  const names = ["Workspace", "Models", "Tools", "Theme"],
+    models = data.connections.filter((c) => c.kind === "model");
   const content = [
-    `<span class="eyebrow">WELCOME TO YOUR NEXT CHAPTER</span><h1>A little help.<br>A lot more you.</h1><p class="setup-description">A personal team for your ideas, projects, and everyday work. Let’s make it feel like home.</p><label class="field"><span>What should we call you?</span><input id="setup-owner" maxlength="60" placeholder="Your first name" value="${esc(data.settings.ownerName)}" autocomplete="given-name"></label><label class="field"><span>Name your workspace</span><input id="setup-workspace" maxlength="60" value="${esc(data.settings.workspaceName)}"></label>`,
-    `<span class="eyebrow">CHOOSE YOUR INTELLIGENCE</span><h1>Your favorite models.<br>Your choice.</h1><p class="setup-description">Run models on this computer or connect a cloud provider with your own API key.</p><div class="setup-options"><button data-action="connect-model" data-preset="ollama">${icon("terminal")}<span><strong>Keep it local</strong><small>Ollama, LM Studio, or another local server.</small></span>${icon("arrow")}</button><button data-action="connect-model" data-preset="openai">${icon("globe")}<span><strong>Connect the cloud</strong><small>Use your key and choose a model.</small></span>${icon("arrow")}</button></div>${data.connections
-      .filter((c) => c.kind === "model")
+    `<h1>Set up your workspace</h1><p class="setup-description">Teammate runs a small team of AI bots on this computer. They take tasks, hand work to each other, and stop for your approval before anything leaves the machine.</p><label class="field"><span>Your name</span><input id="setup-owner" maxlength="60" placeholder="First name" value="${esc(data.settings.ownerName)}" autocomplete="given-name"></label><label class="field"><span>Workspace name</span><input id="setup-workspace" maxlength="60" value="${esc(data.settings.workspaceName)}"></label>`,
+    `<h1>Choose where models run</h1><p class="setup-description">Run models on this computer, or connect a cloud provider with your own key. Each teammate can use a different one.</p><div class="setup-options"><button data-action="connect-model" data-preset="ollama">${icon("terminal")}<span><strong>Keep it local</strong><small>Ollama, LM Studio, or another local server.</small></span>${icon("chevron")}</button><button data-action="connect-model" data-preset="openai">${icon("globe")}<span><strong>Use a cloud provider</strong><small>OpenAI, OpenRouter, Groq, or a compatible endpoint.</small></span>${icon("chevron")}</button></div>${models
       .map(
         (c) =>
           `<div class="setup-connected">${icon("check")}${esc(c.label)} · ${esc(c.account)}</div>`,
       )
-      .join(
-        "",
-      )}<p class="helper">Add multiple providers and assign a different model to each teammate.</p>`,
-    `<span class="eyebrow">BRING YOUR WORK ALONG</span><h1>Fewer tabs.<br>More context.</h1><p class="setup-description">Let your teammates work with the tools you already use. You control every connection.</p><div class="setup-apps">${catalog
+      .join("")}`,
+    `<h1>Connect your tools</h1><p class="setup-description">Teammates work inside the accounts you connect, with your token’s permissions. Anything that publishes or sends waits for you.</p><div class="setup-options">${catalog
       .filter((c) => c.kind !== "model")
       .map(
         (c) =>
-          `<button data-action="connect-catalog" data-kind="${c.kind}"><span class="app-mark ${c.kind}">${icon(c.ic)}</span><span><strong>${c.name}</strong><small>${data.connections.some((x) => x.kind === c.kind) ? "Connected" : "Connect your account or server"}</small></span>${icon(data.connections.some((x) => x.kind === c.kind) ? "check" : "plus")}</button>`,
+          `<button data-action="connect-catalog" data-kind="${c.kind}">${icon(c.ic)}<span><strong>${c.name}</strong><small>${data.connections.some((x) => x.kind === c.kind) ? "Connected" : c.desc}</small></span>${icon(data.connections.some((x) => x.kind === c.kind) ? "check" : "plus")}</button>`,
       )
-      .join(
-        "",
-      )}</div><p class="helper">GitHub and Slack use the permissions of your token. External changes and imported tool calls wait for approval.</p>`,
-    `<span class="eyebrow">FINISHING TOUCHES</span><h1>Make space<br>for your style.</h1><p class="setup-description">Start with a theme and a color that feels like you. Everything can be changed later.</p>${themeChoices()}<label class="field-label spaced">Choose your accent</label>${accentChoices()}<div class="setup-ready">${icon("check")}<span><strong>Your team is ready to meet you.</strong><small>${data.bots.length} editable teammates · ${data.connections.length} connections · your workspace</small></span></div>`,
+      .join("")}</div>`,
+    `<h1>Pick a theme</h1><p class="setup-description">Both can be changed later in Preferences.</p><span class="field-label">Theme</span>${themeChoices()}<span class="field-label spaced">Accent</span>${accentChoices()}<div class="setup-ready">${icon("check")}<span><strong>Ready</strong><small>${plural(data.bots.length, "teammate")} · ${plural(data.connections.length, "connection")}</small></span></div>`,
   ][setupStep];
-  return `<div class="setup-layout"><aside class="setup-visual"><button class="brand" data-action="setup-skip"><span class="brand-symbol">${icon("spark")}</span><span>teammate.</span></button>${orbit()}<div class="setup-visual-copy"><span class="eyebrow">BUILT AROUND YOU</span><h2>Your models.<br>Your tools.<br><em>Your possibilities.</em></h2><p>An open workspace for the way you think.</p></div><span class="setup-local">${icon("key")} Local first. Yours always.</span></aside><main class="setup-main"><div class="setup-top"><div class="step-indicators">${names.map((n, i) => `<span class="${i === setupStep ? "current" : i < setupStep ? "complete" : ""}" title="${n}">${i < setupStep ? icon("check") : i + 1}</span>`).join("")}</div><button class="text-button" data-action="setup-skip">Explore first ${icon("arrow")}</button></div><div class="setup-content">${content}</div><footer class="setup-bottom"><span>STEP ${setupStep + 1} OF 4 <b>${names[setupStep]}</b></span><div>${setupStep ? '<button class="button quiet" data-action="setup-back">Back</button>' : ""}<button class="button primary" data-action="setup-next">${setupStep === 3 ? "Open my workspace" : "Continue"}${icon("arrow")}</button></div></footer></main></div>`;
+  return `<div class="setup-layout"><aside class="setup-side"><div class="brand">${brandMark()}<span>Teammate</span></div><ol class="setup-steps">${names.map((n, i) => `<li class="${i === setupStep ? "current" : i < setupStep ? "complete" : ""}" ${i === setupStep ? 'aria-current="step"' : ""}><span>${n}</span>${i < setupStep ? icon("check") : ""}</li>`).join("")}</ol><dl class="setup-summary"><div><dt>Teammates</dt><dd>${data.bots.map((b) => esc(b.name)).join(", ") || "None yet"}</dd></div><div><dt>Models</dt><dd>${models.map((c) => esc(c.config.model)).join(", ") || "None yet"}</dd></div><div><dt>Stored</dt><dd>On this computer</dd></div></dl></aside><main class="setup-main"><div class="setup-top"><span class="subtle">Step ${setupStep + 1} of 4</span><button class="text-button" data-action="setup-skip">Explore first ${icon("arrow")}</button></div><div class="setup-content">${content}</div><footer class="setup-bottom">${setupStep ? '<button class="button quiet" data-action="setup-back">Back</button>' : "<span></span>"}<button class="button primary" data-action="setup-next">${setupStep === 3 ? "Open my workspace" : "Continue"}${icon("arrow")}</button></footer></main></div>`;
 }
 function render() {
   const focused = document.activeElement;
@@ -511,7 +660,7 @@ function render() {
       )()}</main></div></div>`;
   if (!setupOpen && page === "settings")
     root
-      .querySelector("#main-content")
+      .querySelector(".settings")
       .insertAdjacentHTML("beforeend", advancedSettings());
   colors(root);
   if (selector) {
@@ -525,7 +674,7 @@ function render() {
   window.scrollTo(0, scroll);
 }
 function visionSettings() {
-  return `<section class="panel preference-section"><div class="panel-heading"><h2>Vision for your whole team</h2>${icon("globe")}</div><div class="preference-body"><p class="subtle">A vision companion describes images returned by MCP tools for teammates using text models. Images are sent to the connection you choose.</p><label class="field spaced"><span>Vision companion</span><select data-pref="visionProviderId"><option value="">None · use each model’s own capabilities</option>${data.connections
+  return `<section class="setting-row"><div class="setting-label"><h2>Vision</h2><p>A vision companion describes images from MCP tools for teammates on text-only models. Images go to the connection you choose.</p></div><div class="setting-panel"><label class="field"><span>Vision companion</span><select data-pref="visionProviderId"><option value="">None · use each model’s own capabilities</option>${data.connections
     .filter((c) => c.kind === "model" && c.config.vision)
     .map(
       (c) =>
@@ -533,7 +682,7 @@ function visionSettings() {
     )
     .join(
       "",
-    )}</select><small class="helper">Mark an image capable connection in its model settings to make it available here.</small></label></div></section>`;
+    )}</select><small class="helper">Mark a connection as image capable in its model settings to list it here.</small></label></div></section>`;
 }
 async function refresh() {
   data = await invoke("bootstrap");
@@ -565,11 +714,11 @@ const bytesLabel = (bytes) =>
     : `${Math.round(bytes / 1e6)} MB`;
 function modelsView() {
   const downloads = data.downloads || [];
-  return `${heading("INTELLIGENCE, ON YOUR TERMS", "A home for your models.", "Download through Ollama, connect a local runtime, and choose what powers your team.", button("external", "Get Ollama", "external", 'data-url="https://ollama.com/download"', "button secondary"))}
-  <section class="panel library-runtime"><div><span class="app-mark model">${icon("terminal")}</span><div><h2>Your Ollama runtime</h2><p>Downloads stay in Ollama’s library and can be shared with your other apps.</p></div></div><div class="runtime-address"><label class="field"><span>Server URL</span><input id="model-host" type="url" value="${esc(modelHost)}" aria-label="Ollama server URL"></label>${button("load-library", "Refresh library", "refresh", "", "button secondary")}</div></section>
-  <section class="panel download-panel"><div><span class="eyebrow">SOMETHING NEW TO THINK WITH</span><h2>Bring a model home.</h2><p class="subtle">Enter any model tag supported by Ollama. Check the model’s license and hardware requirements before downloading.</p></div><form id="download-form"><input name="model" aria-label="Model to download" placeholder="e.g. qwen3:8b or hf.co/owner/model:Q4_K_M" required maxlength="200">${button("", "Download model", "download", 'type="submit"')}</form><button class="text-button" data-action="external" data-url="https://ollama.com/library">Explore the Ollama model library ${icon("external")}</button></section>
-  ${downloads.length ? `<section>${section("Downloads")}<div class="panel download-list">${downloads.map((d) => `<article class="download-row"><span class="app-mark model">${icon(d.state === "completed" ? "check" : "download")}</span><div><strong>${esc(d.model)}</strong><small>${esc(d.status)}</small>${d.total ? `<progress max="${Number(d.total)}" value="${Number(d.completed)}" aria-label="Download progress"></progress><small>${bytesLabel(Number(d.completed))} of ${bytesLabel(Number(d.total))}</small>` : ""}</div>${d.state === "downloading" ? button("cancel-download", "Cancel", "close", `data-id="${esc(d.id)}"`, "button quiet small") : d.state === "completed" ? button("connect-installed", "Use model", "plus", `data-model="${esc(d.model)}"`, "button secondary small") : ""}</article>`).join("")}</div></section>` : ""}
-  <section>${section("Installed models", `${installedModels.length} models in this runtime`)}${libraryError ? `<div class="callout error">${icon("info")}<span>${esc(libraryError)}</span></div>` : ""}<div class="catalog-grid">${installedModels.length ? installedModels.map((m) => `<article class="catalog-card"><span class="app-mark large model">${icon("model")}</span><h3>${esc(m.name)}</h3><p>${esc(m.details?.parameter_size || "Local model")} · ${esc(m.details?.quantization_level || m.details?.format || "Ollama")}</p><small>${bytesLabel(Number(m.size || 0))} on disk</small><button class="button secondary" data-action="connect-installed" data-model="${esc(m.name)}">${icon("plus")} Use this model</button></article>`).join("") : empty("model", libraryLoaded ? "Your library is ready for a model." : "Finding your local intelligence…", "Start Ollama, refresh this library, then download a model by name.")}</div></section>`;
+  return `${heading("Model library", `${plural(installedModels.length, "model")} installed in Ollama · downloads are shared with your other apps`, button("external", "Get Ollama", "external", 'data-url="https://ollama.com/download"', "button secondary"))}
+  <div class="grid one-one"><section class="panel library-runtime">${section("Ollama runtime")}<p class="subtle">Teammate reads and downloads models through the Ollama server below.</p><div class="runtime-address"><label class="field"><span>Server URL</span><input id="model-host" type="url" value="${esc(modelHost)}" aria-label="Ollama server URL"></label>${button("load-library", "Refresh library", "refresh", "", "button secondary")}</div></section>
+  <section class="panel download-panel">${section("Download a model", "", `<button class="text-button" data-action="external" data-url="https://ollama.com/library">Ollama library ${icon("external")}</button>`)}<p class="subtle">Any tag Ollama supports, including Hugging Face GGUF tags. Check the licence and memory needs first.</p><form id="download-form"><input name="model" aria-label="Model to download" placeholder="qwen3:8b or hf.co/owner/model:Q4_K_M" required maxlength="200">${button("", "Download model", "download", 'type="submit"', "button secondary")}</form></section></div>
+  ${downloads.length ? `<section class="panel">${section("Downloads")}<div class="download-list">${downloads.map((d) => `<article class="download-row"><div><strong>${esc(d.model)}</strong><small>${esc(d.status)}${d.total ? ` · <span class="num">${bytesLabel(Number(d.completed))} of ${bytesLabel(Number(d.total))}</span>` : ""}</small>${d.total ? `<progress max="${Number(d.total)}" value="${Number(d.completed)}" aria-label="Download progress"></progress>` : ""}</div>${d.state === "downloading" ? button("cancel-download", "Cancel", "close", `data-id="${esc(d.id)}"`, "button quiet small") : d.state === "completed" ? button("connect-installed", "Use model", "plus", `data-model="${esc(d.model)}"`, "button secondary small") : `<span class="pill canceled">${esc(d.state === "canceled" ? "Canceled" : d.state)}</span>`}</article>`).join("")}</div></section>` : ""}
+  <section class="panel">${section("Installed", libraryLoaded ? plural(installedModels.length, "model") : "")}${libraryError ? `<div class="callout error">${icon("info")}<span>${esc(libraryError)}</span></div>` : ""}${installedModels.length ? `<div class="list-header model-header" aria-hidden="true"><span>Model</span><span>Parameters</span><span>Quantization</span><span class="num">On disk</span><span></span></div><div class="catalog-list">${installedModels.map((m) => `<article class="catalog-card model-row"><h3>${esc(m.name)}</h3><span class="subtle">${esc(m.details?.parameter_size || "—")}</span><span class="subtle">${esc(m.details?.quantization_level || m.details?.format || "—")}</span><span class="num">${bytesLabel(Number(m.size || 0))}</span><button class="button secondary small" data-action="connect-installed" data-model="${esc(m.name)}">Use this model</button></article>`).join("")}</div>` : empty("model", libraryLoaded ? "No models installed" : "Looking for Ollama…", "Start Ollama, refresh the library, then download a model by its tag.")}</section>`;
 }
 async function loadLibrary() {
   modelHost = document.querySelector("#model-host")?.value.trim() || modelHost;
@@ -586,7 +735,7 @@ async function loadLibrary() {
 }
 function browserSetup() {
   openSheet(
-    `${dialogHeading("BROWSER TOOLS", "Meet your browser teammate.", "A real browser connection, powered by the open source Playwright MCP server.")}<div class="sheet-body"><ol class="setup-guide"><li><h3>Start the server</h3><p>With Node.js installed, run this command in a terminal. It opens a separate browser profile when used.</p><pre>npx @playwright/mcp@latest --port 8931</pre><button class="text-button" data-action="copy-browser-command">${icon("copy")} Copy command</button></li><li><h3>Connect to Teammate</h3><p>Keep the server running, then verify the endpoint below. Imported browser actions will wait for your approval.</p><code>http://localhost:8931/mcp</code></li><li><h3>Give a teammate a goal</h3><p>Use native tool calling or Structured actions. Accessibility snapshots let text models understand page controls.</p></li></ol><button class="text-button" data-action="external" data-url="https://github.com/microsoft/playwright-mcp">Read the server documentation ${icon("external")}</button></div><div class="sheet-footer"><button class="button quiet" data-action="close-sheet">Later</button><button class="button primary" data-action="connect-playwright">${icon("connections")} Connect browser server</button></div>`,
+    `${dialogHeading("Connect a browser server", "Teammates drive a real browser through the open source Playwright MCP server.")}<div class="sheet-body"><ol class="setup-guide"><li><h3>Start the server</h3><p>With Node.js installed, run this command in a terminal. It opens a separate browser profile when used.</p><pre>npx @playwright/mcp@latest --port 8931</pre><button class="text-button" data-action="copy-browser-command">${icon("copy")} Copy command</button></li><li><h3>Connect it</h3><p>Keep the server running, then verify the endpoint below. Browser actions wait for your approval.</p><code>http://localhost:8931/mcp</code></li><li><h3>Give a teammate a task</h3><p>Use native tool calling or Structured actions. Accessibility snapshots let text models understand page controls.</p></li></ol><button class="text-button" data-action="external" data-url="https://github.com/microsoft/playwright-mcp">Read the server documentation ${icon("external")}</button></div><div class="sheet-footer"><button class="button quiet" data-action="close-sheet">Later</button><button class="button primary" data-action="connect-playwright">${icon("connections")} Connect browser server</button></div>`,
   );
 }
 function openSheet(html, wide = false) {
@@ -606,8 +755,8 @@ function closeSheet() {
   editingBot = null;
   explorer = null;
 }
-const dialogHeading = (label, title, desc = "") =>
-  `<div class="sheet-heading"><div><span class="eyebrow">${label}</span><h2 id="dialog-title">${title}</h2>${desc ? `<p>${desc}</p>` : ""}</div><button class="icon-button" type="button" data-action="close-sheet" aria-label="Close panel">${icon("close")}</button></div>`;
+const dialogHeading = (title, desc = "") =>
+  `<div class="sheet-heading"><div><h2 id="dialog-title">${title}</h2>${desc ? `<p>${desc}</p>` : ""}</div><button class="icon-button" type="button" data-action="close-sheet" aria-label="Close panel">${icon("close")}</button></div>`;
 function formError(e) {
   const target = sheet.querySelector(".form-error");
   if (target) {
@@ -632,17 +781,17 @@ function connectionForm(kind = "model", preset = "", connection = null) {
     p = providers[preset] || providers[kind === "model" ? "ollama" : "custom"];
   let help = "";
   if (kind === "github")
-    help = `<strong>A personal access token, scoped to your work.</strong><p>Grant repository metadata and issues read access. Add issues write access to create issues after approval.</p><button type="button" class="text-button" data-action="external" data-url="https://github.com/settings/personal-access-tokens/new">Create a GitHub token ${icon("external")}</button>`;
+    help = `<strong>A fine-grained personal access token.</strong><p>Grant repository metadata and issues read access. Add issues write access to create issues after approval.</p><button type="button" class="text-button" data-action="external" data-url="https://github.com/settings/personal-access-tokens/new">Create a GitHub token ${icon("external")}</button>`;
   else if (kind === "slack")
-    help = `<strong>Connect a Slack app token.</strong><p>Recommended scopes: channels:read, groups:read, channels:history, groups:history, and chat:write for approved messages. Invite your app to the channels it should read.</p><button type="button" class="text-button" data-action="external" data-url="https://api.slack.com/apps">Open Slack apps ${icon("external")}</button>`;
+    help = `<strong>A Slack bot or user token.</strong><p>Recommended scopes: channels:read, groups:read, channels:history, groups:history, and chat:write for approved messages. Invite your app to the channels it should read.</p><button type="button" class="text-button" data-action="external" data-url="https://api.slack.com/apps">Open Slack apps ${icon("external")}</button>`;
   else if (kind === "mcp")
     help =
-      "<strong>Bring tools from your own server.</strong><p>Connecting discovers its tools. Each imported tool call pauses for your review.</p>";
+      "<strong>A Streamable HTTP MCP server.</strong><p>Connecting discovers its tools. Each imported tool call waits for your approval.</p>";
   else
     help =
       "<p>Start your local runtime first. Ollama uses port 11434; LM Studio commonly uses 1234. Local connections usually need no API key.</p>";
   openSheet(
-    `${dialogHeading("YOUR CONNECTIONS", connection ? `Manage ${esc(connection.label)}` : kind === "model" ? "Connect your intelligence" : `Connect ${kind === "mcp" ? "an MCP server" : kind === "github" ? "GitHub" : "Slack"}`)}<form id="connection-form" data-kind="${kind}"><div class="sheet-body"><div class="connection-help">${help}</div><label class="field"><span>Connection name</span><input name="label" maxlength="80" value="${esc(connection?.label || (kind === "model" ? p.label : kind === "mcp" ? "My MCP server" : kind === "github" ? "GitHub" : "Slack"))}" required></label>${
+    `${dialogHeading(connection ? `Manage ${esc(connection.label)}` : kind === "model" ? "Connect a model" : `Connect ${kind === "mcp" ? "an MCP server" : kind === "github" ? "GitHub" : "Slack"}`)}<form id="connection-form" data-kind="${kind}"><div class="sheet-body"><div class="connection-help">${help}</div><label class="field"><span>Connection name</span><input name="label" maxlength="80" value="${esc(connection?.label || (kind === "model" ? p.label : kind === "mcp" ? "My MCP server" : kind === "github" ? "GitHub" : "Slack"))}" required></label>${
       kind === "model"
         ? `<label class="field"><span>Provider preset</span><select id="provider-preset">${Object.entries(
             providers,
@@ -685,7 +834,7 @@ function botForm(id = "") {
   const b = data.bots.find((b) => b.id === id);
   editingBot = b;
   openSheet(
-    `${dialogHeading("YOUR TEAM", b ? `Meet ${esc(b.name)}` : "A new kind of teammate", "Give it a name, a point of view, and the intelligence to match.")}<form id="bot-form"><div class="sheet-body"><div class="bot-profile-preview">${avatar(b || { name: "New", color: data.settings.accent })}<span>${b ? "Make this teammate your own." : "A blank slate for your next good idea."}</span></div><div class="two-columns"><label class="field"><span>Name</span><input name="name" maxlength="60" value="${esc(b?.name || "")}" placeholder="e.g. Nova" required></label><label class="field"><span>Color</span><input type="color" name="color" value="${esc(b?.color || data.settings.accent)}" aria-label="Teammate color"></label></div><label class="field"><span>Role</span><input name="role" maxlength="100" value="${esc(b?.role || "")}" placeholder="e.g. Your writing partner"></label><label class="field"><span>A short introduction</span><textarea name="description" rows="2" maxlength="300" placeholder="What is this teammate best at?">${esc(b?.description || "")}</textarea></label><label class="field"><span>Model connection</span><select name="providerId"><option value="">Choose a model connection</option>${data.connections
+    `${dialogHeading(b ? `Edit ${esc(b.name)}` : "New teammate", "A name, a role, instructions, and the model it runs on.")}<form id="bot-form"><div class="sheet-body"><div class="bot-profile-preview">${avatar(b || { name: "New", color: data.settings.accent })}<span>${b ? esc(b.role || "Teammate") : "Its initial and colour mark its work across the app."}</span></div><div class="two-columns"><label class="field"><span>Name</span><input name="name" maxlength="60" value="${esc(b?.name || "")}" placeholder="Nova" required></label><label class="field"><span>Color</span><input type="color" name="color" value="${esc(b?.color || data.settings.accent)}" aria-label="Teammate color"></label></div><label class="field"><span>Role</span><input name="role" maxlength="100" value="${esc(b?.role || "")}" placeholder="Writing partner"></label><label class="field"><span>Short description</span><textarea name="description" rows="2" maxlength="300" placeholder="What this teammate is best at">${esc(b?.description || "")}</textarea></label><label class="field"><span>Model connection</span><select name="providerId"><option value="">Choose a model connection</option>${data.connections
       .filter((c) => c.kind === "model")
       .map(
         (c) =>
@@ -693,12 +842,12 @@ function botForm(id = "") {
       )
       .join(
         "",
-      )}</select><small class="helper">Connect a model from Connections to assign it here.</small></label><label class="field"><span>Instructions & personality</span><textarea name="instructions" rows="7" maxlength="12000" placeholder="Describe its expertise, how it should work, and what a great result looks like…">${esc(b?.instructions || "")}</textarea></label><div class="form-error" role="alert" hidden></div>${b ? `<button type="button" class="text-button danger" data-action="delete-bot" data-id="${esc(b.id)}">${icon("trash")} Remove teammate</button>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">${icon("check")} Save teammate</button></div></form>`,
+      )}</select><small class="helper">Connect a model from Connections to assign it here.</small></label><label class="field"><span>Instructions</span><textarea name="instructions" rows="7" maxlength="12000" placeholder="Its expertise, how it should work, and what a good result looks like">${esc(b?.instructions || "")}</textarea></label><div class="form-error" role="alert" hidden></div>${b ? `<button type="button" class="text-button danger" data-action="delete-bot" data-id="${esc(b.id)}">${icon("trash")} Remove teammate</button>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">${icon("check")} Save teammate</button></div></form>`,
   );
 }
 function newTask(title = "", description = "", botId = "") {
   openSheet(
-    `${dialogHeading("A LITTLE HELP STARTS HERE", "What’s the goal?", "Clear context helps your teammate do its best work.")}<form id="task-form"><div class="sheet-body"><label class="field"><span>Task</span><input name="title" maxlength="160" placeholder="What would you like done?" value="${esc(title)}" required></label><label class="field"><span>Context & desired outcome</span><textarea name="description" rows="7" maxlength="16000" placeholder="Add background and what a good result looks like…">${esc(description)}</textarea></label><label class="field"><span>Who’s on it?</span><select name="botId">${data.bots.map((b) => `<option value="${esc(b.id)}" ${b.id === botId ? "selected" : ""}>${esc(b.name)} · ${esc(b.role)}</option>`).join("")}</select></label><div class="form-error" role="alert" hidden></div><div class="secure-note">${icon("approvals")} Teammates ask before publishing, sending, or using imported tools.</div></div><div class="sheet-footer"><button class="button secondary" type="submit" value="draft">Save draft</button><button class="button primary" type="submit" value="run">${icon("play")} Create & run</button></div></form>`,
+    `${dialogHeading("New task", "A clear goal and the context behind it give the best result.")}<form id="task-form"><div class="sheet-body"><label class="field"><span>Task</span><input name="title" maxlength="160" placeholder="Summarise this week’s open issues" value="${esc(title)}" required></label><label class="field"><span>Context and expected result</span><textarea name="description" rows="7" maxlength="16000" placeholder="Background, links, and what a good result looks like">${esc(description)}</textarea></label><label class="field"><span>Teammate</span><select name="botId">${data.bots.map((b) => `<option value="${esc(b.id)}" ${b.id === botId ? "selected" : ""}>${esc(b.name)} · ${esc(b.role)}</option>`).join("")}</select></label><div class="form-error" role="alert" hidden></div><div class="secure-note">${icon("approvals")} Teammates ask before publishing, sending, or using imported tools.</div></div><div class="sheet-footer"><button class="button secondary" type="submit" value="draft">Save draft</button><button class="button primary" type="submit" value="run">${icon("play")} Create & run</button></div></form>`,
   );
 }
 function download(name, text, type = "application/json") {
@@ -724,7 +873,7 @@ async function preference(key, value) {
 }
 function commandPalette() {
   openSheet(
-    `${dialogHeading("A SHORTCUT TO YOUR WORKSPACE", "Where would you like to go?")}<div class="command-search">${icon("search")}<input id="command-input" placeholder="Search pages, teammates, and tasks…" aria-label="Command search" autocomplete="off"></div><div id="command-results"></div><div class="command-footer"><kbd>Enter</kbd> to open <kbd>Esc</kbd> to close</div>`,
+    `${dialogHeading("Jump to")}<div class="command-search">${icon("search")}<input id="command-input" placeholder="Pages, teammates and tasks" aria-label="Command search" autocomplete="off"></div><div id="command-results"></div><div class="command-footer"><kbd>Enter</kbd> to open <kbd>Esc</kbd> to close</div>`,
     true,
   );
   commandResults("");
@@ -777,7 +926,7 @@ async function explore(id, action = "", args = {}) {
         : "tools");
   explorer = { id, method, args };
   openSheet(
-    `${dialogHeading("CONNECTED WORK", esc(c.label), esc(c.account))}<div class="sheet-body explorer-body"><div class="loading-state"><span class="loader"></span>Fetching your workspace…</div></div>`,
+    `${dialogHeading(esc(c.label), esc(c.account))}<div class="sheet-body explorer-body"><div class="loading-state"><span class="loader"></span>Loading from ${esc(c.label)}…</div></div>`,
     true,
   );
   try {
@@ -789,7 +938,7 @@ async function explore(id, action = "", args = {}) {
     if (!explorer || explorer.id !== id) return;
     const list = Array.isArray(r) ? r : r.tools || [];
     sheet.querySelector(".explorer-body").innerHTML =
-      `${["issues", "history"].includes(method) ? `<button class="text-button back-button" data-action="browse" data-id="${esc(id)}">${icon("back")} Back to list</button>` : ""}<div class="explorer-toolbar"><span>${list.length} ${method === "history" ? "recent messages" : method}</span><button class="button small secondary" data-action="explorer-task">${icon("spark")} Use in a task</button></div>${list.length ? list.map((item) => (method === "repositories" ? `<button class="resource-card" data-action="repo-issues" data-id="${esc(id)}" data-repository="${esc(item.fullName)}">${icon("github")}<span><strong>${esc(item.fullName)}</strong><p>${esc(item.description || "No description.")}</p><small>${esc(item.language || "Repository")} · ${item.openIssues} open issues${item.private ? " · Private" : ""}</small></span>${icon("chevron")}</button>` : method === "channels" ? `<button class="resource-card" data-action="channel-history" data-id="${esc(id)}" data-channel="${esc(item.id)}"><span class="channel-hash">#</span><span><strong>${esc(item.name)}</strong><p>${esc(item.topic || "No topic set.")}</p></span>${icon("chevron")}</button>` : method === "issues" ? `<article class="resource-card"><span class="issue-number">#${item.number}</span><span><strong>${esc(item.title)}</strong><p>${esc((item.body || "").slice(0, 500))}</p><button class="text-button" data-action="external" data-url="${esc(item.url)}">Open issue ${icon("external")}</button></span></article>` : method === "history" ? `<article class="message-card"><small>${esc(item.user || "Slack")} · ${new Date(Number(item.ts) * 1000).toLocaleString()}</small><p>${esc(item.text)}</p></article>` : `<article class="resource-card">${icon("terminal")}<span><strong>${esc(item.name)}</strong><p>${esc(item.description || "Imported tool")}</p><span class="pill approval">Approval required</span></span></article>`)).join("") : empty("connections", "Nothing to show yet", "Check your token permissions and the resources this connection can access.")}`;
+      `${["issues", "history"].includes(method) ? `<button class="text-button back-button" data-action="browse" data-id="${esc(id)}">${icon("back")} Back to list</button>` : ""}<div class="explorer-toolbar"><span>${list.length} ${method === "history" ? "recent messages" : method}</span><button class="button small secondary" data-action="explorer-task">${icon("plus")} Use in a task</button></div>${list.length ? list.map((item) => (method === "repositories" ? `<button class="resource-card" data-action="repo-issues" data-id="${esc(id)}" data-repository="${esc(item.fullName)}">${icon("github")}<span><strong>${esc(item.fullName)}</strong><p>${esc(item.description || "No description.")}</p><small>${esc(item.language || "Repository")} · ${item.openIssues} open issues${item.private ? " · Private" : ""}</small></span>${icon("chevron")}</button>` : method === "channels" ? `<button class="resource-card" data-action="channel-history" data-id="${esc(id)}" data-channel="${esc(item.id)}"><span class="channel-hash">#</span><span><strong>${esc(item.name)}</strong><p>${esc(item.topic || "No topic set.")}</p></span>${icon("chevron")}</button>` : method === "issues" ? `<article class="resource-card"><span class="issue-number">#${item.number}</span><span><strong>${esc(item.title)}</strong><p>${esc((item.body || "").slice(0, 500))}</p><button class="text-button" data-action="external" data-url="${esc(item.url)}">Open issue ${icon("external")}</button></span></article>` : method === "history" ? `<article class="message-card"><small>${esc(item.user || "Slack")} · ${new Date(Number(item.ts) * 1000).toLocaleString()}</small><p>${esc(item.text)}</p></article>` : `<article class="resource-card">${icon("terminal")}<span><strong>${esc(item.name)}</strong><p>${esc(item.description || "Imported tool")}</p><span class="pill approval">Approval required</span></span></article>`)).join("") : empty("connections", "Nothing to show yet", "Check your token permissions and the resources this connection can access.")}`;
   } catch (e) {
     sheet.querySelector(".explorer-body").innerHTML =
       `<div class="callout error">${icon("info")}<span>${esc(e)}</span></div><button class="button secondary" data-action="browse" data-id="${esc(id)}">${icon("refresh")} Try again</button>`;
@@ -883,7 +1032,7 @@ async function handleAction(el) {
         });
         setupOpen = false;
         localStorage.removeItem("teammate-setup-step");
-        notify("Welcome to your workspace. Make something good.");
+        notify("Setup complete.");
       } else {
         setupStep++;
         localStorage.setItem("teammate-setup-step", setupStep);
@@ -929,7 +1078,7 @@ async function handleAction(el) {
       try {
         await invoke("test_connection", { connectionId: id });
         await refresh();
-        notify("Connection verified. Ready for work.");
+        notify("Connection verified.");
       } finally {
         busy(el, false);
       }
@@ -989,7 +1138,7 @@ async function handleAction(el) {
         decision: el.dataset.decision,
       });
       await refresh();
-      notify("Decision saved. Your teammate is continuing.");
+      notify("Decision saved.");
       break;
     case "copy-result":
       await navigator.clipboard.writeText(
@@ -1011,7 +1160,7 @@ async function handleAction(el) {
       const text = document.querySelector("#home-prompt").value.trim();
       if (!text) {
         document.querySelector("#home-prompt").focus();
-        notify("Tell your teammate what you’d like done.");
+        notify("Write the task first.");
         break;
       }
       const botId = document.querySelector("#home-bot").value;
@@ -1191,7 +1340,7 @@ document.addEventListener("submit", async (event) => {
       await invoke("save_connection", { input: connectionInput() });
       closeSheet();
       await refresh();
-      notify("Connected and verified. Ready when you are.");
+      notify("Connected and verified.");
     } else if (form.id === "bot-form") {
       await invoke("save_bot", {
         bot: {
@@ -1217,7 +1366,7 @@ document.addEventListener("submit", async (event) => {
       }
       await refresh();
       await detail(taskId);
-      if (!run) notify("Draft saved. Run it when you’re ready.");
+      if (!run) notify("Draft saved.");
     }
   } catch (e) {
     formError(e);
@@ -1277,7 +1426,7 @@ document.addEventListener("change", async (event) => {
         settings: imported.settings,
       });
       render();
-      notify("Your preferences are home.");
+      notify("Preferences imported.");
     }
   } catch (e) {
     notify(e, true);
@@ -1335,7 +1484,7 @@ async function boot() {
         refresh().catch(() => {});
     }, 2000);
   } catch (e) {
-    root.innerHTML = `<main class="startup-error"><span class="brand-symbol">${icon("spark")}</span><h1>Your workspace couldn’t open.</h1><p>${esc(e)}</p><p>Use the desktop application to access local storage and connections.</p><button class="button secondary" id="retry-start">${icon("refresh")} Try again</button></main>`;
+    root.innerHTML = `<main class="startup-error">${brandMark()}<h1>The workspace could not open</h1><p>${esc(e)}</p><p>Use the desktop application to access local storage and connections.</p><button class="button secondary" id="retry-start">${icon("refresh")} Try again</button></main>`;
     document.querySelector("#retry-start").onclick = boot;
   }
 }
