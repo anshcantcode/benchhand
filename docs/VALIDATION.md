@@ -4,7 +4,7 @@ Validation performed on Windows x64 and Ubuntu 24.04 x64 on 20 October 2026. Tes
 
 | Check | Coverage |
 | --- | --- |
-| Rust suite | 23 Windows checks and 22 Linux checks: settings, database migration, credential storage on Windows, provider adapters, tool parsing, workspace boundaries, model downloads, vision routing, HTTP MCP sessions, persistent stdio sessions, approvals, schedule timing, delegation, and plugin validation. |
+| Rust suite | 26 Windows checks and 25 Linux checks: settings, database migration, credential storage on Windows, provider adapters, tool parsing, workspace boundaries, model downloads, vision routing, HTTP MCP sessions, persistent stdio sessions, approvals, schedule timing, delegation, and plugin validation. |
 | Interface suite | 16 checks: setup, personalization, connections, models, tasks, approvals, marketplace lifecycle, hostile publisher text, routines, computer permissions, keyboard navigation, persistence, and small-window layouts. These tests explicitly mock the native command boundary. |
 | Windows native app | Real WebView2 to Rust IPC to local model fixture; workspace file creation, exact approval payload, MCP action, saved result, automatic routine execution, parent/child delegation, signed catalog verification, plugin install/update/disable/enable/theme/uninstall, and OS startup registration with the prior setting restored. |
 | Windows native input | Real display/window discovery and JPEG capture; typing, replacement with a key chord, click, pointer movement, drag, and scrolling inside an editor created in the isolated test app. The harness verifies foreground focus before input. The emergency shortcut and permission revocation are exercised. Desktop capture bytes are not committed. |

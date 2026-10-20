@@ -33,6 +33,24 @@ pub fn base_url(config: &Value) -> Result<String, String> {
     }
     Ok(value.to_string())
 }
+pub fn mcp_url(config: &Value) -> Result<String, String> {
+    let value = config["baseUrl"]
+        .as_str()
+        .ok_or("Enter an MCP server URL")?
+        .trim();
+    let url = Url::parse(value).map_err(|_| "Enter a valid MCP server URL")?;
+    if !["http", "https"].contains(&url.scheme())
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(
+            "Use an HTTP or HTTPS MCP URL without embedded credentials or a fragment".into(),
+        );
+    }
+    Ok(value.into())
+}
 async fn body_json(mut response: reqwest::Response, secret: &str) -> Result<Value, String> {
     let status = response.status();
     let mut bytes = Vec::new();
@@ -180,7 +198,7 @@ pub async fn verify_connection(
             ))
         }
         "mcp" => {
-            let base = base_url(config)?;
+            let base = mcp_url(config)?;
             let tools = mcp_request(client, &base, token, "tools/list", json!({})).await?;
             let list = tools["tools"]
                 .as_array()
@@ -333,14 +351,7 @@ pub async fn integration_action(
             if c.config["transport"] == "stdio" {
                 return crate::stdio::request(c, token, "tools/list", json!({})).await;
             }
-            mcp_request(
-                client,
-                &base_url(&c.config)?,
-                token,
-                "tools/list",
-                json!({}),
-            )
-            .await
+            mcp_request(client, &mcp_url(&c.config)?, token, "tools/list", json!({})).await
         }
         ("mcp", "call") => {
             if c.config["transport"] == "stdio" {
@@ -348,7 +359,7 @@ pub async fn integration_action(
             }
             mcp_request(
                 client,
-                &base_url(&c.config)?,
+                &mcp_url(&c.config)?,
                 token,
                 "tools/call",
                 args.clone(),
@@ -681,6 +692,17 @@ pub async fn model_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mcp_urls_preserve_query_routing_without_embedded_credentials() {
+        let config = json!({"baseUrl":"https://example.org/mcp?tools=search"});
+        assert_eq!(
+            mcp_url(&config).unwrap(),
+            "https://example.org/mcp?tools=search"
+        );
+        assert!(base_url(&config).is_err());
+        assert!(mcp_url(&json!({"baseUrl":"https://user:password@example.org/mcp"})).is_err());
+        assert!(mcp_url(&json!({"baseUrl":"https://example.org/mcp#fragment"})).is_err());
+    }
     #[tokio::test]
     #[ignore = "requires TEAMMATE_TEST_GITHUB_TOKEN; reads account and repositories only"]
     async fn live_github_readonly() {

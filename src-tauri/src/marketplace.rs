@@ -264,6 +264,49 @@ fn normalize_registry(server: &Value, variant: usize) -> Result<Value, String> {
     Ok(m)
 }
 fn validate_manifest(m: &Value) -> Result<(), String> {
+    let r = &m["runtime"];
+    if r["packageArguments"]
+        .as_array()
+        .is_some_and(|a| a.iter().any(|v| v["isSecret"] == true))
+    {
+        return Err(
+            "Pass secrets through environment variables or HTTP headers, not command arguments"
+                .into(),
+        );
+    }
+    let fields = m["fields"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| f["secret"] == true)
+        .chain(
+            r["environmentVariables"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|f| f["isSecret"] == true),
+        );
+    for field in fields {
+        if let Some(name) = field["name"].as_str() {
+            let placeholder = format!("{{{name}}}");
+            if r["url"].as_str().is_some_and(|s| s.contains(&placeholder))
+                || r["packageArguments"].as_array().is_some_and(|a| {
+                    a.iter().any(|v| {
+                        v["value"]
+                            .as_str()
+                            .is_some_and(|s| s.contains(&placeholder))
+                    })
+                })
+                || r["args"].as_array().is_some_and(|a| {
+                    a.iter()
+                        .any(|v| v.as_str().is_some_and(|s| s.contains(&placeholder)))
+                })
+            {
+                return Err("Pass secrets through environment variables or HTTP headers, not URLs or command arguments".into());
+            }
+        }
+    }
+
     identifier(m["id"].as_str().ok_or("A plugin needs an id")?)?;
     if !m["name"]
         .as_str()
@@ -468,6 +511,20 @@ fn no_active_work(state: &AppState) -> Result<(), String> {
     }
     Ok(())
 }
+fn may_reuse_credentials(old: &Value, source: &str, manifest: &Value) -> bool {
+    let previous = &old["manifest"]["runtime"];
+    let current = &manifest["runtime"];
+    old["source"] == source
+        && previous["kind"] == current["kind"]
+        && match current["kind"].as_str().unwrap_or("") {
+            "http" => {
+                previous["url"] == current["url"] && previous["headers"] == current["headers"]
+            }
+            "npm" => previous["package"] == current["package"],
+            "stdio" => previous["command"] == current["command"],
+            _ => false,
+        }
+}
 fn substitute(text: &str, values: &Value) -> Result<String, String> {
     let mut result = text.to_string();
     while let Some(start) = result.find('{') {
@@ -671,10 +728,10 @@ pub async fn install_plugin(
         if m.get("runtime").is_some(){
             let mut config=prepare_runtime(&state,&m,&values,&directory).await?;
             let connection_id=uuid::Uuid::new_v4().to_string();
-            let old_secret=old.as_ref().and_then(|o|o["connectionIds"].as_array()).and_then(|v|v.first()).and_then(Value::as_str).and_then(|i|state.connection(i).ok()).and_then(|c|crate::connection_secret(&c).ok()).unwrap_or_default();
+            let old_secret=if let Some(previous)=old.as_ref().filter(|o|may_reuse_credentials(o,&source,&m)){if let Some(id)=previous["connectionIds"].as_array().and_then(|v|v.first()).and_then(Value::as_str){crate::connection_secret(&state.connection(id)?)?}else{String::new()}}else{String::new()};
             let secret=if config["transport"]=="stdio"{let mut env=serde_json::from_str::<Value>(&old_secret).ok().filter(Value::is_object).unwrap_or(json!({}));for item in m["runtime"]["environmentVariables"].as_array().unwrap_or(&vec![]){let name=item["name"].as_str().ok_or("Environment variable needs a name")?;let value=values[name].as_str().or_else(||item["value"].as_str()).or_else(||item["default"].as_str()).or_else(||env[name].as_str());if let Some(v)=value{env[name]=json!(v);}else if item["isRequired"]==true{return Err(format!("Enter {name}"));}}if let Some(extra)=values["environment"].as_object(){for (k,v) in extra{env[k]=v.clone();}}if env.as_object().is_some_and(|m|m.is_empty()){String::new()}else{env.to_string()}}else if m["runtime"]["headers"].as_array().is_some_and(|v|!v.is_empty()){
                 let mut headers=serde_json::from_str::<Value>(&old_secret).ok().filter(Value::is_object).unwrap_or(json!({}));
-                for h in m["runtime"]["headers"].as_array().unwrap(){let name=h["name"].as_str().ok_or("A header needs a name")?;let value=if let Some(template)=h["value"].as_str(){Some(substitute(template,&values)?)}else{values[name].as_str().map(str::to_string).or_else(||headers[name].as_str().map(str::to_string))};if let Some(v)=value{headers[name]=json!(v);}else if h["isRequired"]==true{return Err(format!("Enter {name}"));}}
+                for h in m["runtime"]["headers"].as_array().unwrap(){let name=h["name"].as_str().ok_or("A header needs a name")?;let value=if let Some(template)=h["value"].as_str(){Some(substitute(template,&values).or_else(|error|headers[name].as_str().map(str::to_owned).ok_or(error))?)}else{values[name].as_str().map(str::to_string).or_else(||headers[name].as_str().map(str::to_string))};if let Some(v)=value{headers[name]=json!(v);}else if h["isRequired"]==true{return Err(format!("Enter {name}"));}}
                 headers.to_string()
             }else{values["token"].as_str().filter(|s|!s.is_empty()).unwrap_or(&old_secret).into()};
             let temp=Connection{id:connection_id.clone(),kind:"mcp".into(),label:m["name"].as_str().unwrap().into(),config:config.clone(),account:String::new(),verified_at:now()};
@@ -868,6 +925,24 @@ pub fn plugin_theme(plugin_id: String, state: State<'_, AppState>) -> Result<Val
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+    #[test]
+    fn secret_parameters_cannot_be_persisted_in_urls_or_arguments() {
+        let mut m = json!({"id":"test/secrets","name":"Secret test","version":"1","fields":[{"name":"TOKEN","secret":true}],"runtime":{"kind":"http","url":"https://example.org/mcp/{TOKEN}"}});
+        assert!(validate_manifest(&m).is_err());
+        m["runtime"] = json!({"kind":"stdio","command":"node","args":["--key={TOKEN}"]});
+        assert!(validate_manifest(&m).is_err());
+        m["runtime"] = json!({"kind":"http","url":"https://example.org/mcp","headers":[{"name":"Authorization","value":"Bearer {TOKEN}"}]});
+        assert!(validate_manifest(&m).is_ok());
+    }
+    #[test]
+    fn credentials_stay_with_their_catalog_and_endpoint() {
+        let m = json!({"runtime":{"kind":"http","url":"https://trusted.example/mcp"}});
+        let old = json!({"source":"trusted","manifest":m});
+        assert!(may_reuse_credentials(&old, "trusted", &m));
+        assert!(!may_reuse_credentials(&old, "other-catalog", &m));
+        let changed = json!({"runtime":{"kind":"http","url":"https://other.example/mcp"}});
+        assert!(!may_reuse_credentials(&old, "trusted", &changed));
+    }
     #[test]
     fn signatures_detect_changes_and_untrusted_keys() {
         let key = SigningKey::from_bytes(&[17; 32]);
