@@ -33,8 +33,8 @@ Most AI tools are a chat box. Teammate is a **durable task system**: each teamma
 | | |
 | --- | --- |
 | **Teammates** | Editable name, role, instructions, colour, model and private file workspace for each bot. |
-| **Tasks** | Native tool calling or a JSON action adapter for small local models; live activity, cancel, re-run, Markdown export. |
-| **Approvals** | Exact JSON payloads for Slack messages, GitHub issues, browser and MCP actions, plus mouse and keyboard input. |
+| **Tasks** | Native tool calling or a JSON action adapter for small local models; a step list for every run, live activity, cancel, re-run, Markdown export. |
+| **Approvals** | Slack messages, GitHub issues, computer input and MCP calls shown as they will appear, with the exact JSON one click away. Edit values before you approve. |
 | **Delegation** | Teammates discover each other and create child tasks. A shared turn budget, depth limit and loop detection keep runs bounded. |
 | **Routines** | Once, interval, daily and weekly schedules with IANA time zones, daylight saving handling and missed-run policies. |
 | **Model library** | Browse, download and connect Ollama models, including Hugging Face GGUF tags, with progress and cancellation. |
@@ -47,8 +47,8 @@ Most AI tools are a chat box. Teammate is a **durable task system**: each teamma
 
 <table>
   <tr>
-    <td><img src="docs/images/task.png" alt="Task detail with delegated work and an activity timeline"></td>
-    <td><img src="docs/images/approvals.png" alt="Approval queue showing the exact payload of a Slack message"></td>
+    <td><img src="docs/images/task.png" alt="Task detail with run steps, delegated work, details and activity"></td>
+    <td><img src="docs/images/approvals.png" alt="Approval queue showing a Slack message and a GitHub issue as they will appear"></td>
   </tr>
   <tr>
     <td><img src="docs/images/routines.png" alt="Routines with teammate, repeat rule and next run"></td>

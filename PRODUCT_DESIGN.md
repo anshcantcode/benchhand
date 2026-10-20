@@ -5,9 +5,9 @@
 
 ## Implemented in 0.3
 
-The desktop app has guided setup, appearance controls, persistent teammate profiles and tasks, local and cloud model adapters, bounded agent runs, private workspace files, durable approvals, GitHub and Slack integrations, MCP over HTTP and stdio, browser setup, an Ollama download library and a vision companion bridge. Version 0.3 added routines, delegation between teammates, time-limited computer control, the plugin marketplace with signed catalogs, and background tray mode. The README and CHANGELOG describe tested behaviour and current limits.
+The desktop app has guided setup, appearance controls, persistent teammate profiles and tasks, local and cloud model adapters, bounded agent runs, private workspace files, durable approvals, GitHub and Slack integrations, MCP over HTTP and stdio, browser setup, an Ollama download library and a vision companion bridge. Version 0.3 added routines, delegation between teammates, time-limited computer control, the plugin marketplace with signed catalogs and background tray mode. Version 0.3.1 added readable approvals, edit-before-approve and a step list for each run. The README and CHANGELOG describe tested behaviour and current limits.
 
-Remaining work: readable approval previews and edit-before-approve, step-level progress inside a run, embedded inference, a macOS build, Wayland input, signed installers, shared team accounts and remote access.
+Remaining work: embedded inference, a macOS build, Wayland input, signed installers, shared team accounts and remote access.
 
 ## Product
 

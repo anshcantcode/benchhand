@@ -1,6 +1,6 @@
 [package]
 name = "teammate-desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "A local-first team of AI teammates"
 authors = ["Teammate contributors"]
 edition = "2021"

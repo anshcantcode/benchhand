@@ -27,7 +27,7 @@ You can expect an acknowledgement within 3 working days and an assessment within
 
 We especially want to hear about:
 
-- an action that sends, publishes, writes or gives input without passing through an approval
+- an action that sends, publishes, writes or gives input without passing through an approval, or that runs inputs other than the ones you approved
 - a model, tool result, web page or plugin changing a teammate's permissions or approval rules (prompt injection that crosses this boundary)
 - credentials leaking into prompts, logs, SQLite, exports or error messages
 - a teammate reading or writing files outside its workspace

@@ -4,6 +4,19 @@ All notable changes to Teammate are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-20
+
+### Added
+
+- **Edit before approving.** Change the values of a proposed action, such as a message, an issue title or a click position, and approve the edited version. Edits keep the same fields and types, the approved inputs are exactly what runs, and the teammate is told what changed.
+- **Readable approvals.** Slack messages, GitHub issues and computer actions are shown as they will appear, with the exact inputs one click away.
+- **Steps for each run.** A task shows every step it took, which one is in progress, which one waits for you and what is left, all read from the run's own events.
+
+### Changed
+
+- Task pages use two columns: the approval, steps, delegated work and result on the left; details and the activity log on the right.
+- Previous decisions show when an approval was edited.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
@@ -34,6 +47,7 @@ All notable changes to Teammate are recorded here. The format follows [Keep a Ch
 
 First desktop preview: guided setup, personalised themes, editable teammates, real task execution with local file workspaces, exact action approvals, local and cloud models through Chat Completions and Responses, the Ollama model library, GitHub and Slack, Streamable HTTP MCP import, Playwright browser setup and the vision companion bridge.
 
-[Unreleased]: https://github.com/anshcantcode/teammate/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/anshcantcode/teammate/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/anshcantcode/teammate/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/anshcantcode/teammate/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/anshcantcode/teammate/releases/tag/v0.2.0

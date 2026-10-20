@@ -8,7 +8,8 @@ How to set up Teammate, connect your accounts and tools, and what to expect from
 2. Complete guided setup, or choose **Explore first** and connect services later.
 3. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Model library** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Connections** and supply the provider’s API base URL and key.
 4. Choose **Discover**, select a model, and verify the connection. The first model is assigned to teammates that do not already have one.
-5. Give a teammate a task. Review the activity and any exact action payload in **Approvals**. Results can be copied or exported as Markdown.
+5. Give a teammate a task. Its page shows each step of the run, a details panel and the full activity log. Results can be copied or exported as Markdown.
+6. Decide in **Approvals**. Each action is shown as it will appear (a Slack message, a GitHub issue, a click or keystroke), with the exact inputs one click away. Choose **Edit** to change values before approving. The edited inputs are what runs, and the teammate is told what changed.
 
 For local models without native function calling, try **Structured actions** in the connection’s tool settings. The model must still be capable of following the JSON action instructions. **Text only** disables tool calling.
 
