@@ -3,9 +3,11 @@
 **Status:** Product direction and remaining roadmap; implemented features are documented in README.md.
 **Name:** Teammate
 
-## Implemented in 0.2
+## Implemented in 0.3
 
-The desktop app now has guided setup, appearance controls, persistent teammate profiles and tasks, local/cloud model adapters, bounded agent runs, private workspace files, durable approvals, GitHub and Slack integrations, remote MCP import, browser setup, an Ollama download library, and a vision companion bridge. The README describes tested behavior and current limits. Schedules, collaboration between teammates, a native host controller, embedded inference, and a signed marketplace remain future work.
+The desktop app has guided setup, appearance controls, persistent teammate profiles and tasks, local and cloud model adapters, bounded agent runs, private workspace files, durable approvals, GitHub and Slack integrations, MCP over HTTP and stdio, browser setup, an Ollama download library and a vision companion bridge. Version 0.3 added routines, delegation between teammates, time-limited computer control, the plugin marketplace with signed catalogs, and background tray mode. The README and CHANGELOG describe tested behaviour and current limits.
+
+Remaining work: readable approval previews and edit-before-approve, step-level progress inside a run, embedded inference, a macOS build, Wayland input, signed installers, shared team accounts and remote access.
 
 ## Product
 

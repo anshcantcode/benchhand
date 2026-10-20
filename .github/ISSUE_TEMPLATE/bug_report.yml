@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Teammate does not work as expected.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please search [existing issues](https://github.com/anshcantcode/teammate/issues) first.
+        **Security problems:** do not file them here. Follow [SECURITY.md](https://github.com/anshcantcode/teammate/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect to see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Connections
+        2. Add an Ollama connection with ...
+        3. Start a task ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Teammate version
+      description: Shown at the bottom of the sidebar.
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Ubuntu 24.04 or newer
+        - Other Linux (say which below)
+        - Built from source on another platform
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model and provider
+      description: If the problem involves a task run, which model and endpoint was the teammate using?
+      placeholder: "qwen3:8b on Ollama, native tool calling"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, errors or screenshots
+      description: Remove tokens, keys and private data before pasting.
+      render: text

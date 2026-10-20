@@ -1,77 +1,100 @@
+<div align="center">
+
+<img src="src-tauri/app-icon.svg" width="72" alt="">
+
 # Teammate
 
-An open source desktop workspace for AI teammates, built with a Rust runtime and Tauri. Give a teammate a goal, follow its work, review proposed actions, and keep the result on your device.
+**A small team of AI bots that runs on your own computer.**
+Give a teammate a goal, watch the work happen, and approve anything that leaves the machine.
 
-![Teammate workspace](design/screenshots/overview.png)
+[![Desktop packages](https://github.com/anshcantcode/teammate/actions/workflows/desktop.yml/badge.svg)](https://github.com/anshcantcode/teammate/actions/workflows/desktop.yml)
+[![Latest release](https://img.shields.io/github/v/release/anshcantcode/teammate?include_prereleases&label=release)](https://github.com/anshcantcode/teammate/releases)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+![Windows and Linux](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-informational)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
-## What works in 0.3
+[Download](https://github.com/anshcantcode/teammate/releases) · [User guide](docs/USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) · [Plugins](docs/PLUGINS.md) · [Roadmap](PRODUCT_DESIGN.md)
 
-- **Guided setup:** name your workspace, choose local or cloud intelligence, connect services, and set your style.
-- **Personalization:** dark, light, and system themes; custom accent colors; text size; density; typography; corner radius; compact navigation; reduced motion; start page; preferences import and export.
-- **Persistent teammates:** editable names, roles, instructions, colors, individual model connections, and private file workspaces.
-- **Real task execution:** native tool calls or a JSON action adapter, task activity, cancellation, bounded runs, saved results, Markdown export, and durable approval continuation.
-- **Model choice:** OpenAI compatible Chat Completions and Responses endpoints, including Ollama, LM Studio, OpenRouter, Groq, and OpenAI. Use your own API keys. Responses history preserves reasoning items across tool calls.
-- **Local model library:** inspect an Ollama runtime, download supported model tags (including supported Hugging Face GGUF tags), follow progress, cancel, and connect installed models. Ollama must be installed and running separately.
-- **GitHub:** verify an account, browse up to 100 accessible repositories, read up to 50 open issues per repository, and create issues after approval.
-- **Slack:** verify a workspace, list up to 100 accessible public/private channels, read up to 50 recent messages, and send messages after approval.
-- **Native computer use:** discover displays and windows, capture screenshots, click, move, type, press key chords, scroll, and drag. Grant time-limited access to selected teammates; input actions require approval. Revoke access from the app, tray, or Ctrl+Alt+Escape.
-- **Plugin marketplace:** featured recommendations, official MCP Registry search and pagination, signed community catalogs, exact-version review, managed npm installs, persistent stdio and HTTP servers, plugin updates, enable/disable, uninstall, teammate packs, and themes. [Plugin and publishing guide](docs/PLUGINS.md).
-- **Routines:** once, interval, daily, and weekly schedules with IANA time zones, daylight saving handling, missed-run policies, overlap prevention, durable history, and manual runs.
-- **Bot delegation:** teammates discover each other, create durable child tasks, work concurrently within your limit, and receive results automatically. Task trees share a turn budget; ancestor loops, excessive depth, and unbounded fan-out are blocked.
-- **Background work:** an optional system tray mode, optional OS sign-in startup, and a single default-workspace instance. Routines and tasks keep running while the window is hidden.
-- **Vision bridge:** send MCP tool images directly to an image capable model, or use an explicitly selected vision companion to describe images for text models. No model gains image understanding merely by enabling a setting.
-- **Local persistence and credentials:** SQLite stores profiles, tasks, decisions, and connection metadata. Windows Credential Manager / Linux Secret Service stores keys separately.
-- **Windows and Linux packages:** Windows NSIS installer; Linux Debian and AppImage packages.
+</div>
 
-The UI screenshots use illustrative test data. The desktop app starts with editable teammate profiles and your own empty workspace.
+![Teammate overview: one lane per teammate over the last 24 hours, the approvals waiting on you, and recent tasks](docs/images/overview.png)
 
-## Start using it
+## Why Teammate
 
-1. Install the package for your OS. On Windows the app uses WebView2; the installer can provision the runtime. On Linux use a desktop session with WebKitGTK 4.1 and a working Secret Service keyring.
-2. Complete guided setup, or choose **Explore first** and connect services later.
-3. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Model library** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Connections** and supply the provider’s API base URL and key.
-4. Choose **Discover**, select a model, and verify the connection. The first model is assigned to teammates that do not already have one.
-5. Give a teammate a task. Review the activity and any exact action payload in **Approvals**. Results can be copied or exported as Markdown.
+Most AI tools are a chat box. Teammate is a **durable task system**: each teammate has a role, its own model, instructions and private workspace. Tasks survive restarts, teammates hand work to each other, routines run on a schedule, and every send, post or imported tool call stops in an approval queue until you decide.
 
-For local models without native function calling, try **Structured actions** in the connection’s tool settings. The model must still be capable of following the JSON action instructions. **Text only** disables tool calling.
+- **Local first.** Tasks, results and history live in SQLite on your machine. Keys live in the OS credential store, never in prompts.
+- **Your models.** Ollama, LM Studio, vLLM, OpenAI, OpenRouter, Groq, or any OpenAI-compatible endpoint, chosen per teammate.
+- **Reviewable autonomy.** You see the exact payload of every consequential action before it runs.
+- **Open tools.** MCP servers over HTTP and stdio, a marketplace with signed community catalogs, and teammate packs.
 
-### GitHub and Slack
+## Features
 
-GitHub uses a personal access token. Grant metadata and issues read access for the repositories you want to use; add issues write access if you want approved issue creation. Existing token permissions determine what is accessible.
+| | |
+| --- | --- |
+| **Teammates** | Editable name, role, instructions, colour, model and private file workspace for each bot. |
+| **Tasks** | Native tool calling or a JSON action adapter for small local models; live activity, cancel, re-run, Markdown export. |
+| **Approvals** | Exact JSON payloads for Slack messages, GitHub issues, browser and MCP actions, plus mouse and keyboard input. |
+| **Delegation** | Teammates discover each other and create child tasks. A shared turn budget, depth limit and loop detection keep runs bounded. |
+| **Routines** | Once, interval, daily and weekly schedules with IANA time zones, daylight saving handling and missed-run policies. |
+| **Model library** | Browse, download and connect Ollama models, including Hugging Face GGUF tags, with progress and cancellation. |
+| **Connections** | GitHub, Slack, and Streamable HTTP MCP servers, with secrets in Windows Credential Manager or Linux Secret Service. |
+| **Marketplace** | Featured tools, Official MCP Registry search, signed catalogs, exact-version review, managed npm installs, updates and uninstall. |
+| **Computer control** | Time-limited, per-teammate screen capture and approved input. Stop at any time with Ctrl+Alt+Escape. |
+| **Vision bridge** | Send tool images to a vision model, or let a vision companion describe them for text-only models. |
+| **Background work** | Optional tray mode and sign-in startup, so routines keep running with the window closed. |
+| **Personal** | Dark, light and system themes, accent colour, density, text size, corner radius and compact navigation. |
 
-Slack uses a bot or user token. Typical scopes are `channels:read`, `groups:read`, `channels:history`, `groups:history`, and `chat:write`. Invite the app to the channels it should read. Slack workspace policy and token scopes may limit access.
+<table>
+  <tr>
+    <td><img src="docs/images/task.png" alt="Task detail with delegated work and an activity timeline"></td>
+    <td><img src="docs/images/approvals.png" alt="Approval queue showing the exact payload of a Slack message"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/routines.png" alt="Routines with teammate, repeat rule and next run"></td>
+    <td><img src="docs/images/overview-light.png" alt="The overview in the light theme"></td>
+  </tr>
+</table>
 
-### Computer use
+<sub>Screenshots use sample data. A new install starts with editable teammate profiles and an empty workspace.</sub>
 
-Open **Computer**, select teammates, choose an access duration, and enable screen access. Allow mouse and keyboard separately. Start a task such as “Capture my desktop and describe the open window; ask before interacting.” An image capable model or an explicitly chosen vision companion is required to understand screenshots. Access expires and resets on restart. Ctrl+Alt+Escape and the tray stop control revoke access between actions. The interface reports when the global shortcut is unavailable.
+## Get started
 
-Windows native control works through OS capture and input APIs. Linux X11 is supported. Wayland capture and input depend on your compositor and desktop portals; grant the OS permission when prompted. Secure desktops, elevated windows, and protected content remain subject to operating system restrictions.
+1. **Download** the Windows installer, Debian package or AppImage from [Releases](https://github.com/anshcantcode/teammate/releases).
+2. **Connect a model.** Start [Ollama](https://ollama.com/download) and download a model from **Model library**, or add a cloud provider key in **Connections**.
+3. **Give a teammate a task** from the overview, then follow it in **Tasks** and decide in **Approvals**.
 
-### Browser tools and plugins
+The [user guide](docs/USER_GUIDE.md) covers GitHub and Slack tokens, computer control, plugins, routines, delegation and current limits.
 
-Open **Marketplace**, select Playwright Browser, and review the exact npm version before installing. Node.js with npm must be installed and visible on PATH. The app manages the server process and browser state. You can also connect an existing Playwright HTTP server or import a stdio configuration, a Teammate JSON manifest, or a manifest bundle.
+## How it works
 
-Use **Installed** to disable, review an update, apply a plugin theme, or uninstall. Add a signed community catalog through **Catalogs**. Read the [plugin and publishing guide](docs/PLUGINS.md) for supported manifests, runtimes, credentials, signatures, and bundles.
+```mermaid
+flowchart LR
+    UI[Desktop UI<br/>vanilla JS in Tauri] -->|IPC| Core[Rust core]
+    Core --> DB[(SQLite<br/>tasks, events, schedules)]
+    Core --> Orchestrator[Orchestrator<br/>runs, delegation, routines]
+    Orchestrator --> Models[Model adapters<br/>Chat Completions, Responses]
+    Orchestrator --> Policy{Approval policy}
+    Policy --> Tools[Tools<br/>GitHub, Slack, MCP, files, computer]
+    Core --> Secrets[OS credential store]
+```
 
-### Routines and delegation
-
-Create a routine in **Routines** with a teammate, task context, timing, time zone, and missed-run policy. The app must be running and the computer awake. Enable tray background work and sign-in startup in **Preferences** if desired. Missed occurrences coalesce to one catch-up run or are skipped; concurrent occurrences of the same routine never overlap. External actions still require approval. History links each occurrence to its task.
-
-Teammates can use **team_directory** and **delegate_task** during ordinary tasks. Each child uses its own model and private workspace; its parent must pass the necessary context. Results and failures return automatically. The task detail page shows parent and child links. Canceling a parent cancels active descendants. The shared turn budget, concurrent run limit, three-level depth limit, and 32-child limit keep work bounded.
-
-## Current boundaries
-
-This is an early desktop release with the four core workflows implemented. It does not bundle model inference or model weights. It supports OpenAI compatible model endpoints, rather than every vendor's proprietary protocol. The marketplace supports MCP HTTP and stdio tools, npm runtimes, signed declarative catalogs, teammate packs, and themes; it does not promise compatibility with arbitrary native plugins. Interactive OAuth, legacy SSE-only transports, and OCI package management need a compatible bridge or an explicitly configured local program.
-
-Model quality and tool reliability vary. A weak text model may not reliably perform an agent workflow. A vision companion supplies descriptions, with the usual image interpretation limitations. No inference model is bundled, and downloads follow the model runtime’s supported formats and licenses.
-
-External services and cloud models receive the context needed for the action. A vision companion receives tool images when configured. Local storage is not encrypted by the app; OS key storage protects credentials separately. Workspace path checks are intended to prevent accidental file escape, not to sandbox an untrusted native extension. Imported MCP tools may have broad access on the server; review their inputs and run only servers you trust.
-
-Interrupted direct tasks pause on restart. Interrupted delegated leaf tasks report a failure to their waiting parent; pending approvals and delegation continuations remain durable. An interrupted model download can resume cached layers through Ollama. GitHub/Slack browsing currently shows bounded first pages rather than complete account exports. Disconnecting a connection pauses active task runs. The desktop process must stay open or in its tray for tasks and schedules to continue.
+| Path | What lives there |
+| --- | --- |
+| `src-tauri/src/main.rs` | App setup, settings, storage, migrations and IPC commands |
+| `src-tauri/src/agent.rs` | The agent loop, tool calling and approval continuation |
+| `src-tauri/src/orchestration.rs` | Concurrent runs, delegation trees and routines |
+| `src-tauri/src/services.rs` | Model turns, GitHub, Slack and MCP clients |
+| `src-tauri/src/models.rs` | The Ollama model library and downloads |
+| `src-tauri/src/marketplace.rs` | Catalogs, signatures, plugin installs and updates |
+| `src-tauri/src/stdio.rs` | Managed MCP server processes |
+| `src-tauri/src/computer.rs`, `desktop.rs` | Native screen capture and input; tray and sign-in startup |
+| `frontend/` | The interface: `app.js`, `features.js`, `styles.css`, no framework |
+| `tests/` | Playwright interface tests against a mocked native boundary |
 
 ## Build from source
 
-Install Rust stable, Node.js 22+, and the [Tauri platform prerequisites](https://tauri.app/start/prerequisites/). On Windows use the Visual Studio x64 Native Tools prompt with C++ Build Tools and a Windows SDK. Linux needs WebKitGTK 4.1, GTK, DBus development headers, and the packages listed in the CI workflow.
+You need Rust stable, Node.js 22+ and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```sh
 npm ci
@@ -79,35 +102,26 @@ npm run dev
 ```
 
 ```sh
-# On Windows
-npm run build:windows
-
-# On Linux
-npm run build:linux
+npm run test:rust   # Rust runtime checks
+npm run test:ui     # Interface checks (run `npx playwright install chromium` once)
+npm run build:windows   # or build:linux
 ```
 
-Packages are written to `src-tauri/target/release/bundle`. CI builds Windows x64 and Ubuntu 24.04 x64 packages. Linux native capture uses modern PipeWire headers and requires Ubuntu 24.04 or an equivalent recent desktop. The Windows bundle uses the system webview and does not ship Chromium. Model weights and separate tool runtimes are additional downloads.
+Packages are written to `src-tauri/target/release/bundle`. See [docs/VALIDATION.md](docs/VALIDATION.md) for the native end-to-end check and platform notes.
 
-### Checks
+## Contributing
 
-```sh
-cargo test --manifest-path src-tauri/Cargo.toml
-npx playwright install chromium
-npm run test:ui
-```
+Contributions of every size are welcome: bug reports, docs, new integrations, model adapters, and interface polish. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue labelled [`good first issue`](https://github.com/anshcantcode/teammate/labels/good%20first%20issue) or [`help wanted`](https://github.com/anshcantcode/teammate/labels/help%20wanted).
 
-Rust checks cover settings, migrations, credential storage, endpoint validation, model adapters, workspace files, image routing, MCP HTTP and stdio sessions, native action validation, plugin signatures and bundle checks, schedule timing and deduplication, delegation loops and cancellation, and full task/approval continuation. Browser UI tests explicitly mock the native command boundary. They cover setup, errors, connections, teammates, tasks, downloads, extensions, vision settings, persistence, keyboard navigation, and responsive layouts.
+Areas where help makes the biggest difference:
 
-Optional live checks are ignored by default. `TEAMMATE_TEST_GITHUB_TOKEN` enables the GitHub read-only check; `TEAMMATE_TEST_MCP_URL` plus a local preview enables the browser check. Never put credentials in source or shell history.
+- **Integrations:** Linear, Jira, Notion, Google Drive and email through MCP.
+- **Platforms:** a macOS build and Wayland portal testing.
+- **Models:** native adapters for more providers and better structured-action prompts for small local models.
+- **Packaging:** signed Windows installers and Flatpak.
 
-After a Windows release build, `npm run test:native` launches the real WebView2 desktop app in an isolated temporary workspace. It checks setup, Rust IPC, a file write, exact approvals, MCP calls, automatic scheduling, parent/child delegation, signed catalogs, stdio installation and update, managed installation of a real npm package, and native screen capture plus keyboard and pointer input in an editor created inside the isolated test app. It does not require a paid model key or change your normal workspace.
-
-[Detailed validation and platform limits](docs/VALIDATION.md).
-
-### Storage
-
-The default location is the OS application data directory for `dev.localteam.teammate`. To choose a different local workspace, set `TEAMMATE_DATA_DIR` to an absolute directory before launching. This changes the database and file workspace location; credentials remain in the OS credential store.
+Please read the [code of conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-[Apache-2.0](LICENSE). Model weights, external tools, and services retain their own licenses and terms.
+[Apache-2.0](LICENSE). Model weights, external tools and services keep their own licences and terms.
