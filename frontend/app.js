@@ -36,6 +36,10 @@ const paths = {
   sun: "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2",
   moon: "M21 13a9 9 0 0 1-10-10 9 9 0 1 0 10 10Z",
   monitor: "M3 3h18v14H3V3ZM8 21h8M12 17v4",
+  computer: "M3 3h18v14H3V3ZM8 21h8M12 17v4",
+  schedule: "M8 2v4M16 2v4M3 9h18M3 4h18v17H3V4ZM8 13h3M8 17h6",
+  schedules: "M8 2v4M16 2v4M3 9h18M3 4h18v17H3V4ZM8 13h3M8 17h6",
+  extensions: "M3 3h7v7H3V3ZM14 3h7v7h-7V3ZM3 14h7v7H3v-7ZM14 14h7v7h-7v-7Z",
 };
 const icon = (n) =>
   `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[n] || paths.spark}"/></svg>`;
@@ -93,7 +97,9 @@ const pages = {
   connections: "Connections",
   approvals: "Approvals",
   models: "Model library",
-  extensions: "Extensions",
+  extensions: "Marketplace",
+  schedules: "Routines",
+  computer: "Computer",
   settings: "Preferences",
 };
 const providers = {
@@ -221,7 +227,7 @@ function orbit() {
 }
 function sidebar() {
   const running = data.tasks.filter((t) => t.status === "running").length;
-  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home"><span class="brand-symbol">${icon("spark")}</span><span>teammate<span class="brand-dot">.</span></span></button><button class="workspace-button" data-action="navigate" data-page="settings"><span class="workspace-monogram">${esc((data.settings.workspaceName || "My workspace")[0])}</span><span><strong>${esc(data.settings.workspaceName)}</strong><small>Personal workspace</small></span>${icon("chevron")}</button><div class="nav-caption">WORKSPACE</div><nav aria-label="Main navigation">${["home", "tasks", "team", "models", "connections", "extensions", "approvals"].map((id) => `<button class="nav-item ${page === id ? "active" : ""}" data-action="navigate" data-page="${id}" aria-label="${pages[id]}" title="${pages[id]}" ${page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${pages[id]}</span>${id === "approvals" && pending().length ? `<b class="nav-count">${pending().length}</b>` : ""}</button>`).join("")}</nav><div class="sidebar-spacer"></div><div class="local-status"><i class="status-dot ${running ? "pulsing" : ""}"></i><span>${running ? `${running} tasks running` : "Your workspace is local"}<small>${data.connections.filter((c) => c.kind === "model").length} model connections</small></span></div><button class="nav-item ${page === "settings" ? "active" : ""}" data-action="navigate" data-page="settings" aria-label="Preferences" title="Preferences">${icon("settings")}<span>Preferences</span></button><div class="sidebar-footer"><span class="profile-avatar">${esc((data.settings.ownerName || "You")[0])}</span><span>${esc(data.settings.ownerName || "Your workspace")}<small>Teammate ${esc(data.device.version || "0.2.0")}</small></span></div></aside>`;
+  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home"><span class="brand-symbol">${icon("spark")}</span><span>teammate<span class="brand-dot">.</span></span></button><button class="workspace-button" data-action="navigate" data-page="settings"><span class="workspace-monogram">${esc((data.settings.workspaceName || "My workspace")[0])}</span><span><strong>${esc(data.settings.workspaceName)}</strong><small>Personal workspace</small></span>${icon("chevron")}</button><div class="nav-caption">WORKSPACE</div><nav aria-label="Main navigation">${["home", "tasks", "team", "models", "connections", "extensions", "schedules", "computer", "approvals"].map((id) => `<button class="nav-item ${page === id ? "active" : ""}" data-action="navigate" data-page="${id}" aria-label="${pages[id]}" title="${pages[id]}" ${page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${pages[id]}</span>${id === "approvals" && pending().length ? `<b class="nav-count">${pending().length}</b>` : ""}</button>`).join("")}</nav><div class="sidebar-spacer"></div><div class="local-status"><i class="status-dot ${running ? "pulsing" : ""}"></i><span>${running ? `${running} tasks running` : "Your workspace is local"}<small>${data.connections.filter((c) => c.kind === "model").length} model connections</small></span></div><button class="nav-item ${page === "settings" ? "active" : ""}" data-action="navigate" data-page="settings" aria-label="Preferences" title="Preferences">${icon("settings")}<span>Preferences</span></button><div class="sidebar-footer"><span class="profile-avatar">${esc((data.settings.ownerName || "You")[0])}</span><span>${esc(data.settings.ownerName || "Your workspace")}<small>Teammate ${esc(data.device.version || "0.3.0")}</small></span></div></aside>`;
 }
 function topbar() {
   return `<div class="topbar"><div class="breadcrumbs"><span>${esc(data.settings.workspaceName)}</span>${icon("chevron")}<strong>${pages[page]}</strong></div><div class="topbar-right"><button class="search-trigger" data-action="command">${icon("search")}<span>Jump to anything</span><kbd>Ctrl K</kbd></button><button class="icon-button" title="Review approvals" data-action="navigate" data-page="approvals">${icon("approvals")}${pending().length ? '<span class="notification-dot"></span>' : ""}</button></div></div>`;
@@ -327,7 +333,7 @@ function taskDetail() {
   }
   const b = data.bots.find((b) => b.id === t.botId),
     a = pending().find((a) => a.taskId === t.id);
-  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="task-heading"><div>${pill(t)}<h1>${esc(t.title)}</h1><p>${avatar(b, true)} ${esc(t.botName)} <span>·</span> ${esc(modelName(b))}</p></div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}${a ? approvalCard(a) : ""}<div class="task-detail-grid"><section class="panel result-panel"><div class="panel-heading"><h2>${t.output ? "The result" : "Your task"}</h2><div>${t.output ? `<button class="icon-button" title="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" data-action="export-result">${icon("download")}</button>` : ""}</div></div>${t.output ? `<article class="markdown">${markdown(t.output)}</article>` : t.status === "running" ? `<div class="working-state"><div class="thinking-orb">${icon("spark")}</div><h3>${esc(t.botName)} is on it.</h3><p>${esc(events.at(-1)?.message || "Starting your task…")}</p><span class="animated-dots"><i></i><i></i><i></i></span></div>` : `<div class="task-brief"><h3>${esc(t.title)}</h3><p>${esc(t.description || "No additional details.")}</p>${t.status === "queued" ? '<span class="subtle">Ready when you are. Run this task to get started.</span>' : ""}</div>`}</section><aside class="panel activity-panel"><div class="panel-heading"><h2>Activity</h2><span class="subtle">${events.length} events</span></div><ol class="timeline">${events.map((e, i) => `<li><i class="timeline-dot ${i === events.length - 1 && t.status === "running" ? "live" : ""}"></i><div><p>${esc(e.message)}</p><time>${new Date(e.createdAt * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time></div></li>`).join("")}</ol><div class="activity-footnote">${icon("approvals")} External changes wait for your approval.</div></aside></div>`;
+  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="task-heading"><div>${pill(t)}<h1>${esc(t.title)}</h1><p>${avatar(b, true)} ${esc(t.botName)} <span>·</span> ${esc(modelName(b))}</p></div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}${a ? approvalCard(a) : ""}${delegationDetail(t)}<div class="task-detail-grid"><section class="panel result-panel"><div class="panel-heading"><h2>${t.output ? "The result" : "Your task"}</h2><div>${t.output ? `<button class="icon-button" title="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" data-action="export-result">${icon("download")}</button>` : ""}</div></div>${t.output ? `<article class="markdown">${markdown(t.output)}</article>` : t.status === "running" ? `<div class="working-state"><div class="thinking-orb">${icon("spark")}</div><h3>${esc(t.botName)} is on it.</h3><p>${esc(events.at(-1)?.message || "Starting your task…")}</p><span class="animated-dots"><i></i><i></i><i></i></span></div>` : `<div class="task-brief"><h3>${esc(t.title)}</h3><p>${esc(t.description || "No additional details.")}</p>${t.status === "queued" ? '<span class="subtle">Ready when you are. Run this task to get started.</span>' : ""}</div>`}</section><aside class="panel activity-panel"><div class="panel-heading"><h2>Activity</h2><span class="subtle">${events.length} events</span></div><ol class="timeline">${events.map((e, i) => `<li><i class="timeline-dot ${i === events.length - 1 && t.status === "running" ? "live" : ""}"></i><div><p>${esc(e.message)}</p><time>${new Date(e.createdAt * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time></div></li>`).join("")}</ol><div class="activity-footnote">${icon("approvals")} External changes wait for your approval.</div></aside></div>`;
 }
 function teamView() {
   return `${heading("A TEAM THAT FITS YOU", "Different strengths.<br>One shared workspace.", "Give each teammate its own role, instructions, personality, and model.", button("edit-bot", "New teammate"))}<div class="team-grid expanded">${data.bots.map(teammateCard).join("")}<button class="add-teammate" data-action="edit-bot">${icon("plus")}<strong>A role only you can imagine</strong><span>Create a teammate from scratch</span></button></div><div class="info-strip">${icon("model")}<span>Every teammate can use connected tools. Its model and instructions shape how it works.</span></div>`;
@@ -496,11 +502,17 @@ function render() {
           team: teamView,
           connections: connectionsView,
           models: modelsView,
-          extensions: extensionsView,
+          extensions: marketplaceView,
+          schedules: schedulesView,
+          computer: computerView,
           approvals: approvalsView,
           settings: settingsView,
         }[page] || homeView
       )()}</main></div></div>`;
+  if (!setupOpen && page === "settings")
+    root
+      .querySelector("#main-content")
+      .insertAdjacentHTML("beforeend", advancedSettings());
   colors(root);
   if (selector) {
     const replacement = root.querySelector(selector);
@@ -545,6 +557,7 @@ function navigate(next) {
   render();
   document.querySelector("#main-content")?.scrollTo(0, 0);
   if (next === "models" && !libraryLoaded) loadLibrary();
+  featureNavigate(next).catch((e) => notify(e, true));
 }
 const bytesLabel = (bytes) =>
   bytes >= 1e9
@@ -571,48 +584,9 @@ async function loadLibrary() {
   libraryLoaded = true;
   if (page === "models") render();
 }
-function extensionsView() {
-  return `${heading("A WORKSPACE THAT GROWS WITH YOU", "More possibilities. Open doors.", "Bring in tools through MCP. Every connected model uses the same tool layer.", button("import-extension", "Import extension", "upload", "", "button primary"))}
-  <div class="extension-feature"><div><span class="eyebrow">BROWSER AUTOMATION</span><h2>A capable pair of hands<br><em>for the web.</em></h2><p>Connect Microsoft’s Playwright MCP server. Your teammates can read page structure and use browser tools with local or cloud models.</p><button class="button primary" data-action="browser-setup">${icon("globe")} Set up browser tools</button></div><div class="browser-art" aria-hidden="true"><div><i></i><i></i><i></i></div><span>${icon("globe")}</span><b>Your browser. Your workflow.</b></div></div>
-  <section>${section("Your open tool library", "Connect services directly, or import your own HTTP MCP configuration.")}<div class="catalog-grid">${[
-    [
-      "github",
-      "GitHub",
-      "Repositories, open issues, and approved publishing.",
-      "connect-catalog",
-      'data-kind="github"',
-    ],
-    [
-      "slack",
-      "Slack",
-      "Read channel context and send messages after approval.",
-      "connect-catalog",
-      'data-kind="slack"',
-    ],
-    [
-      "connections",
-      "Your MCP server",
-      "Add browser, computer, search, or business tools exposed by your server.",
-      "connect-mcp",
-      "",
-    ],
-  ]
-    .map(
-      ([ic, title, desc, action, attrs]) =>
-        `<article class="catalog-card"><span class="app-mark large ${ic}">${icon(ic)}</span><h3>${title}</h3><p>${desc}</p><small>${ic === "connections" ? "Streamable HTTP · bring your endpoint" : "Built into Teammate"}</small><button class="button secondary" data-action="${action}" ${attrs}>${icon("plus")} Connect</button></article>`,
-    )
-    .join(
-      "",
-    )}</div></section><div class="info-strip">${icon("info")}<span>Extensions run through connected services. Computer control requires a compatible tool server. Vision requires an image capable model or a vision companion; a text model cannot see pixels on its own.</span></div>`;
-}
 function browserSetup() {
   openSheet(
     `${dialogHeading("BROWSER TOOLS", "Meet your browser teammate.", "A real browser connection, powered by the open source Playwright MCP server.")}<div class="sheet-body"><ol class="setup-guide"><li><h3>Start the server</h3><p>With Node.js installed, run this command in a terminal. It opens a separate browser profile when used.</p><pre>npx @playwright/mcp@latest --port 8931</pre><button class="text-button" data-action="copy-browser-command">${icon("copy")} Copy command</button></li><li><h3>Connect to Teammate</h3><p>Keep the server running, then verify the endpoint below. Imported browser actions will wait for your approval.</p><code>http://localhost:8931/mcp</code></li><li><h3>Give a teammate a goal</h3><p>Use native tool calling or Structured actions. Accessibility snapshots let text models understand page controls.</p></li></ol><button class="text-button" data-action="external" data-url="https://github.com/microsoft/playwright-mcp">Read the server documentation ${icon("external")}</button></div><div class="sheet-footer"><button class="button quiet" data-action="close-sheet">Later</button><button class="button primary" data-action="connect-playwright">${icon("connections")} Connect browser server</button></div>`,
-  );
-}
-function importExtension() {
-  openSheet(
-    `${dialogHeading("YOUR OPEN TOOLBOX", "Bring your own extension.", "Import an HTTP MCP config or a Teammate extension manifest. Review the endpoint before connecting.")}<form id="extension-form"><div class="sheet-body"><label class="field"><span>Extension JSON</span><textarea name="manifest" rows="12" required spellcheck="false" placeholder='{"name":"My tools","url":"http://localhost:8931/mcp"}'></textarea></label><p class="helper">Also accepts an mcpServers object with a url entry. Command based stdio servers need an HTTP bridge. Credentials are entered in the connection form.</p><div class="form-error" role="alert" hidden></div></div><div class="sheet-footer"><button class="button quiet" type="button" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">Review connection ${icon("arrow")}</button></div></form>`,
   );
 }
 function openSheet(html, wide = false) {
@@ -620,7 +594,9 @@ function openSheet(html, wide = false) {
   sheet.innerHTML = html;
   if (!sheet.open) sheet.showModal();
   colors(sheet);
-  const firstInput = sheet.querySelector("input:not([type=hidden]):not([type=color]),textarea");
+  const firstInput = sheet.querySelector(
+    "input:not([type=hidden]):not([type=color]),textarea",
+  );
   (firstInput || sheet.querySelector("button"))?.focus();
 }
 function closeSheet() {
@@ -828,6 +804,7 @@ async function detail(id) {
 async function handleAction(el) {
   const a = el.dataset.action,
     id = el.dataset.id;
+  if (await featureAction(el)) return;
   switch (a) {
     case "load-library":
       await loadLibrary();
@@ -844,7 +821,7 @@ async function handleAction(el) {
       sheet.querySelector("[name=label]").value = el.dataset.model;
       break;
     case "import-extension":
-      importExtension();
+      pluginImport();
       break;
     case "browser-setup":
       browserSetup();
@@ -1171,39 +1148,28 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "extension-form") {
     event.preventDefault();
     try {
-      const text = new FormData(event.target).get("manifest");
-      if (text.length > 256000)
-        throw new Error("Use a manifest smaller than 256 KB.");
-      let manifest = JSON.parse(text);
-      if (manifest.mcpServers) {
-        const entry = Object.entries(manifest.mcpServers).find(
-          ([, v]) => v.url,
-        );
-        if (!entry)
-          throw new Error(
-            "This config contains command based servers. Start an HTTP bridge, then connect its URL.",
+      const file = event.target.querySelector("#plugin-file")?.files?.[0];
+      if (file) {
+        if (file.size > 10_000_000)
+          throw new Error("Use a plugin smaller than 10 MB.");
+        if (file.name.toLowerCase().endsWith(".zip")) {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          let text = "";
+          for (const b of bytes) text += String.fromCharCode(b);
+          pluginInitialValues = {};
+          pluginReview(
+            await invoke("import_plugin", {
+              manifest: btoa(text),
+              bundle: true,
+            }),
           );
-        manifest = { name: entry[0], ...entry[1] };
+        } else await importManifest(await file.text());
+      } else {
+        const text = new FormData(event.target).get("manifest");
+        if (text.length > 1_000_000)
+          throw new Error("Use a manifest smaller than 1 MB.");
+        await importManifest(text);
       }
-      const endpoint = manifest.url || manifest.baseUrl;
-      if (!endpoint)
-        throw new Error("Include a url for the HTTP MCP endpoint.");
-      const url = new URL(endpoint);
-      if (
-        !["http:", "https:"].includes(url.protocol) ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash
-      )
-        throw new Error(
-          "Use an HTTP endpoint without embedded credentials or query strings.",
-        );
-      connectionForm("mcp");
-      sheet.querySelector("[name=baseUrl]").value = url.href;
-      sheet.querySelector("[name=label]").value = String(
-        manifest.name || "Imported tools",
-      ).slice(0, 80);
     } catch (e) {
       formError(e);
     }

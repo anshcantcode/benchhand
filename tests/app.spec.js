@@ -1,6 +1,74 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
+test("marketplace reviews installs disables and removes a plugin", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page
+    .locator("nav")
+    .getByRole("button", { name: "Marketplace" })
+    .click();
+  await page.getByRole("button", { name: "Review & install" }).click();
+  await expect(page.locator(".runtime-review")).toContainText(
+    "https://example.org/mcp",
+  );
+  await page
+    .getByRole("button", { name: "Install plugin", exact: true })
+    .click();
+  await expect(page.locator(".catalog-card h3")).toHaveText("Browser tools");
+  await page.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect(page.locator(".catalog-card .tag")).toHaveText("Disabled");
+  await page.getByRole("button", { name: "Uninstall Browser tools" }).click();
+  await page
+    .getByRole("button", { name: "Uninstall plugin", exact: true })
+    .click();
+  await expect(page.getByText("Your toolbox starts here.")).toBeVisible();
+});
+test("routines save weekly timing context and enabled state", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", { name: "Routines" }).click();
+  await page.getByRole("button", { name: "New routine" }).click();
+  await page.locator("[name=name]").fill("Weekly review");
+  await page.locator("[name=title]").fill("Review project issues");
+  await page
+    .locator("[name=description]")
+    .fill("Ask Forge for an engineering summary.");
+  await page.locator("#schedule-kind").selectOption("weekly");
+  await page.locator("[name=timezone]").fill("Asia/Kolkata");
+  await page.getByRole("button", { name: "Save routine" }).click();
+  await expect(page.locator(".routine-card h3")).toHaveText("Weekly review");
+  const saved = await page.evaluate(() => window.fixtureState.schedules[0]);
+  expect(saved.config.kind).toBe("weekly");
+  expect(saved.config.days).toEqual([1, 2, 3, 4, 5]);
+  expect(saved.enabled).toBe(true);
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await expect(page.getByText("No runs yet.")).toBeVisible();
+});
+test("computer access explicitly selects teammates input and expiry", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page
+    .locator("nav")
+    .getByRole("button", { name: "Computer", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Capture screen" }),
+  ).toBeDisabled();
+  await page.locator("[name=botIds][value=research]").check();
+  await page.locator("[name=allowInput]").check();
+  await page.getByRole("button", { name: "Enable reviewed access" }).click();
+  await expect(page.getByText("Access active", { exact: true })).toBeVisible();
+  const settings = await page.evaluate(() => window.fixtureState.settings);
+  expect(settings.computerBotIds).toEqual(["research"]);
+  expect(settings.computerInput).toBe(true);
+  await page.getByRole("button", { name: "Stop access" }).click();
+  await expect(page.getByText("Access off", { exact: true })).toBeVisible();
+});
+
 async function nativeFixture(page, { setup = true, connected = true } = {}) {
   await page.addInitScript(
     ({ setup, connected }) => {
@@ -116,7 +184,7 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
               os: "windows",
               arch: "x86_64",
               threads: 16,
-              version: "0.2.0",
+              version: "0.3.0",
             },
           };
       const persist = () =>
@@ -135,6 +203,103 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
               );
             let result;
             switch (command) {
+              case "autostart_status":
+                return {
+                  enabled: false,
+                  desktop: { tray: true, emergencyShortcut: true },
+                };
+              case "set_autostart":
+                return {
+                  enabled: args.enabled,
+                  desktop: { tray: true, emergencyShortcut: true },
+                };
+              case "marketplace_search":
+                return {
+                  entries: [
+                    {
+                      id: "example/browser",
+                      name: "Browser tools",
+                      description:
+                        "A browser tool fixture for marketplace interaction tests.",
+                      version: "1.0.0",
+                    },
+                  ],
+                  nextCursor: "",
+                };
+              case "review_plugin":
+              case "import_plugin":
+                return {
+                  planId: "plan",
+                  source: args.source || "local",
+                  sha256: "test-digest",
+                  manifest:
+                    command === "import_plugin"
+                      ? JSON.parse(args.manifest)
+                      : {
+                          id: args.pluginId,
+                          name: "Browser tools",
+                          description: "Test tools",
+                          version: "1.0.0",
+                          runtime: {
+                            kind: "http",
+                            url: "https://example.org/mcp",
+                          },
+                        },
+                };
+              case "install_plugin":
+                state.plugins = [
+                  {
+                    id: "example/browser",
+                    manifest: {
+                      name: "Browser tools",
+                      version: "1.0.0",
+                      description: "Test tools",
+                    },
+                    source: "featured",
+                    connectionIds: [],
+                    botIds: [],
+                    enabled: true,
+                  },
+                ];
+                break;
+              case "toggle_plugin":
+                state.plugins.find((p) => p.id === args.pluginId).enabled =
+                  args.enabled;
+                break;
+              case "uninstall_plugin":
+                state.plugins = [];
+                break;
+              case "save_plugin_source":
+                state.pluginSources = [
+                  { ...args, id: "source", kind: "signed" },
+                ];
+                break;
+              case "delete_plugin_source":
+                state.pluginSources = [];
+                break;
+              case "save_schedule":
+                state.schedules = [
+                  {
+                    ...args.schedule,
+                    id: args.schedule.id || "routine",
+                    nextRunAt: now + 3600,
+                  },
+                ];
+                break;
+              case "delete_schedule":
+                state.schedules = [];
+                break;
+              case "schedule_history":
+                return [];
+              case "set_computer_access":
+                Object.assign(state.settings, {
+                  computerEnabled: args.enabled,
+                  computerInput: args.allowInput,
+                  computerBotIds: args.botIds,
+                  computerExpiresAt: args.enabled ? now + args.minutes * 60 : 0,
+                });
+                result = state.settings;
+                break;
               case "bootstrap":
                 return clone(state);
               case "save_settings":
@@ -470,7 +635,9 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
   ).toBeVisible();
   await page.keyboard.press("Control+k");
   await page.waitForTimeout(100);
-  await expect(page.getByRole('textbox',{name:'Command search'})).toBeFocused();
+  await expect(
+    page.getByRole("textbox", { name: "Command search" }),
+  ).toBeFocused();
   await page
     .getByRole("textbox", { name: "Command search" })
     .fill("Preferences");
@@ -537,7 +704,7 @@ test("premium layouts have no horizontal overflow at desktop and small windows",
       "Teammates",
       "Connections",
       "Model library",
-      "Extensions",
+      "Marketplace",
     ]) {
       await page.locator("nav").getByRole("button", { name }).click();
       expect(
@@ -584,8 +751,13 @@ test("extensions import remote MCP configs and expose a real browser setup", asy
   page,
 }) => {
   await nativeFixture(page);
-  await page.locator("nav").getByRole("button", { name: "Extensions" }).click();
-  await page.getByRole("button", { name: "Set up browser tools" }).click();
+  await page
+    .locator("nav")
+    .getByRole("button", { name: "Marketplace" })
+    .click();
+  await page
+    .getByRole("button", { name: "Connect an existing browser server" })
+    .click();
   await expect(page.locator(".setup-guide pre")).toHaveText(
     "npx @playwright/mcp@latest --port 8931",
   );
@@ -594,15 +766,13 @@ test("extensions import remote MCP configs and expose a real browser setup", asy
     "http://localhost:8931/mcp",
   );
   await page.getByRole("button", { name: "Close panel" }).click();
-  await page.getByRole("button", { name: "Import extension" }).click();
-  await page
-    .locator("[name=manifest]")
-    .fill(
-      JSON.stringify({
-        mcpServers: { notes: { url: "https://tools.example/mcp" } },
-      }),
-    );
-  await page.getByRole("button", { name: "Review connection" }).click();
+  await page.getByRole("button", { name: "Import plugin" }).click();
+  await page.locator("[name=manifest]").fill(
+    JSON.stringify({
+      mcpServers: { notes: { url: "https://tools.example/mcp" } },
+    }),
+  );
+  await page.getByRole("button", { name: "Review plugin" }).click();
   await expect(page.locator("[name=baseUrl]")).toHaveValue(
     "https://tools.example/mcp",
   );
@@ -701,7 +871,10 @@ test("capture the implemented desktop experience", async ({ page }) => {
     path: "design/screenshots/models.png",
     fullPage: true,
   });
-  await page.locator("nav").getByRole("button", { name: "Extensions" }).click();
+  await page
+    .locator("nav")
+    .getByRole("button", { name: "Marketplace" })
+    .click();
   await page.screenshot({
     path: "design/screenshots/extensions.png",
     fullPage: true,

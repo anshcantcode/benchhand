@@ -34,6 +34,8 @@ fn tool_label(tool: &Tool) -> String {
         "channels" => "Browse channels",
         "history" => "Read recent messages",
         "send_message" => "Send message",
+        "team_directory" => "Browse teammates",
+        "delegate_task" => "Delegate work",
         other => {
             return format!(
                 "{} · {}",
@@ -74,6 +76,8 @@ fn tools_for(connections: Vec<Connection>) -> HashMap<String, Tool> {
             json!({"path":{"type":"string"},"content":{"type":"string"}}),
             vec!["path", "content"],
         ),
+        ("team_directory","List teammates, their IDs, roles, and available models before delegating work.",json!({}),vec![]),
+        ("delegate_task","Delegate a specific subtask to another teammate. The teammate works with its own model and workspace, and its final result returns to you automatically. Pass all needed context; it cannot read your private workspace. Ancestor loops are forbidden.",json!({"botId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"}}),vec!["botId","title","description"]),
     ] {
         tools.insert(
             name.into(),
@@ -238,6 +242,9 @@ async fn execute(
             services::integration_action(&state.client, &current, &token, &tool.action, args).await
         }
     } else {
+        if tool.action == "team_directory" {
+            return Ok(json!(state.bots()?.iter().map(|b|json!({"id":b.id,"name":b.name,"role":b.role,"modelConnected":!b.provider_id.is_empty()})).collect::<Vec<_>>()));
+        }
         workspace_action(root, &tool.action, args)
     }
 }
@@ -298,14 +305,16 @@ async fn image_context(
 }
 pub async fn run(app: &tauri::AppHandle, id: &str, resume: bool) -> Result<(), String> {
     let state = app.state::<AppState>();
-    run_with(&state, id, resume, || emit(app, id)).await
+    run_with(&state, id, resume, Some(app), || emit(app, id)).await
 }
-async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> Result<(), String> {
-    let task = state
-        .tasks()?
-        .into_iter()
-        .find(|t| t.id == id)
-        .ok_or("Task not found")?;
+async fn run_with(
+    state: &AppState,
+    id: &str,
+    resume: bool,
+    app: Option<&tauri::AppHandle>,
+    emit: impl Fn(),
+) -> Result<(), String> {
+    let task = state.task(id)?;
     let bot = state
         .bots()?
         .into_iter()
@@ -313,7 +322,24 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
         .ok_or("Teammate not found")?;
     let provider = state.connection(&bot.provider_id)?;
     let secret = crate::connection_secret(&provider)?;
-    let tool_map = tools_for(state.connections()?);
+    let mut tool_map = tools_for(state.connections()?);
+    let settings = state.settings()?;
+    if crate::computer::allowed(&settings, &bot.id, false) {
+        for (name, desc, props, required, approval) in crate::computer::specifications() {
+            if approval && !crate::computer::allowed(&settings, &bot.id, true) {
+                continue;
+            }
+            tool_map.insert(
+                name.into(),
+                Tool {
+                    definition: definition(name, desc, props, required),
+                    connection: None,
+                    action: name.into(),
+                    approval,
+                },
+            );
+        }
+    }
     let mut definitions = tool_map
         .values()
         .map(|t| t.definition.clone())
@@ -341,7 +367,13 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
     };
     let max = state.settings()?["maxSteps"].as_u64().unwrap_or(12) as usize;
     loop {
+        if state.task(id)?.status != "running" {
+            return Ok(());
+        }
         while !run.pending.is_empty() {
+            if state.task(id)?.status != "running" {
+                return Ok(());
+            }
             let call = run.pending[0].clone();
             let name = call["function"]["name"]
                 .as_str()
@@ -373,14 +405,22 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
                 if tool.approval && !approved && !rejected {
                     let approval_id = uuid::Uuid::new_v4().to_string();
                     run.approval_id = approval_id.clone();
-                    let connection = tool.connection.as_ref().ok_or("Connection unavailable")?;
+                    if tool.action.starts_with("computer_") {
+                        crate::computer::validate(&tool.action, &args)?;
+                    }
+                    let target = tool
+                        .connection
+                        .as_ref()
+                        .map(|c| c.label.as_str())
+                        .unwrap_or("This computer");
                     let title = match tool.action.as_str() {
                         "create_issue" => "Create a GitHub issue",
                         "send_message" => "Send a Slack message",
+                        action if action.starts_with("computer_") => "Control this computer",
                         _ => "Run an imported tool",
                     };
                     let db = state.lock()?;
-                    db.execute("INSERT INTO approvals(id,task_id,title,target,summary,status,created_at,tool_name,arguments) VALUES(?1,?2,?3,?4,?5,'pending',?6,?7,?8)",params![approval_id,id,title,connection.label,format!("{} proposes {}. Review the exact inputs below.",bot.name,tool.action),now(),name,args.to_string()]).map_err(db_error)?;
+                    db.execute("INSERT INTO approvals(id,task_id,title,target,summary,status,created_at,tool_name,arguments) VALUES(?1,?2,?3,?4,?5,'pending',?6,?7,?8)",params![approval_id,id,title,target,format!("{} proposes {}. Review the exact inputs below.",bot.name,tool.action),now(),name,args.to_string()]).map_err(db_error)?;
                     db.execute("UPDATE tasks SET status='paused',waiting_approval=1,continuation=?2,updated_at=?3 WHERE id=?1",params![id,serde_json::to_string(&run).map_err(db_error)?,now()]).map_err(db_error)?;
                     drop(db);
                     state.event(id, "Waiting for your approval")?;
@@ -392,7 +432,23 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
                 } else {
                     state.event(id, &format!("Running: {label}"))?;
                     emit();
-                    execute(&state, &root, tool, &args).await
+                    if tool.action == "delegate_task" {
+                        crate::orchestration::delegate(
+                            state,
+                            id,
+                            call["id"].as_str().unwrap_or(""),
+                            &args,
+                        )
+                    } else if tool.action.starts_with("computer_") {
+                        match app {
+                            Some(app) => {
+                                crate::computer::perform(app, &bot.id, &tool.action, &args).await
+                            }
+                            None => Err("Native desktop context is unavailable".into()),
+                        }
+                    } else {
+                        execute(&state, &root, tool, &args).await
+                    }
                 }
             } else {
                 Err("This tool is unavailable. Choose one of the supplied tools.".into())
@@ -401,6 +457,34 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
                 Ok(v) => v,
                 Err(e) => json!({"error":e}),
             };
+            if let Some(child) = output["waitingChild"].as_str() {
+                // Consecutive delegation calls may run together; results keep their original order.
+                for other in run
+                    .pending
+                    .iter()
+                    .skip(1)
+                    .take_while(|v| v["function"]["name"] == "delegate_task")
+                {
+                    if let Ok(args) = serde_json::from_str::<Value>(
+                        other["function"]["arguments"].as_str().unwrap_or("{}"),
+                    ) {
+                        let _ = crate::orchestration::delegate(
+                            state,
+                            id,
+                            other["id"].as_str().unwrap_or(""),
+                            &args,
+                        );
+                    }
+                }
+                state.lock()?.execute("UPDATE tasks SET status='paused',waiting_child=?2,continuation=?3,updated_at=?4 WHERE id=?1 AND status='running'",params![id,child,serde_json::to_string(&run).map_err(db_error)?,now()]).map_err(db_error)?;
+                state.event(id, "Waiting for delegated work")?;
+                emit();
+                return Ok(());
+            }
+            state
+                .lock()?
+                .execute("UPDATE tasks SET waiting_child='' WHERE id=?1", [id])
+                .map_err(db_error)?;
             let visual = image_context(state, &provider, &mut output).await?;
             let text = output.to_string();
             let bounded = text.chars().take(40000).collect::<String>();
@@ -428,6 +512,10 @@ async fn run_with(state: &AppState, id: &str, resume: bool, emit: impl Fn()) -> 
             return Err(format!("Reached the {max} step limit. Review the activity and increase the limit in preferences if needed."));
         }
         run.step += 1;
+        let charged=state.lock()?.execute("UPDATE tasks SET budget_remaining=budget_remaining-1 WHERE id=(SELECT CASE WHEN root_id='' THEN id ELSE root_id END FROM tasks WHERE id=?1) AND budget_remaining>0",[id]).map_err(db_error)?;
+        if charged != 1 {
+            return Err("This task and its delegated work reached the shared turn budget. Review the results before starting another run.".into());
+        }
         state.event(id, &format!("Thinking · step {} of {max}", run.step))?;
         emit();
         let message = services::model_turn(
@@ -594,7 +682,7 @@ mod tests {
                 active: Mutex::new(HashMap::new()),
                 downloads: Mutex::new(HashMap::new()),
             };
-            run_with(&state, "test", false, || {}).await.unwrap();
+            run_with(&state, "test", false, None, || {}).await.unwrap();
             let task = state.tasks().unwrap().remove(0);
             assert_eq!(task.status, "paused");
             assert!(task.waiting_approval);
@@ -637,7 +725,7 @@ mod tests {
                     [],
                 )
                 .unwrap();
-            run_with(&state, "test", true, || {}).await.unwrap();
+            run_with(&state, "test", true, None, || {}).await.unwrap();
             assert_eq!(state.tasks().unwrap()[0].status, "completed");
             let calls = server
                 .requests

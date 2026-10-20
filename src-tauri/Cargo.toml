@@ -1,6 +1,6 @@
 [package]
 name = "teammate-desktop"
-version = "0.2.0"
+version = "0.3.0"
 description = "A local-first team of AI teammates"
 authors = ["Teammate contributors"]
 edition = "2021"
@@ -15,8 +15,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 keyring = { version = "3.6", features = ["windows-native", "sync-secret-service", "crypto-rust"] }
-tokio = { version = "1", features = ["time", "macros", "sync"] }
-tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["time", "macros", "sync", "process", "io-util"] }
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+base64 = "0.22"
+sha2 = "0.10"
+ed25519-dalek = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+enigo = { version = "0.6.1", features = ["wayland"] }
+xcap = "0.9.8"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+tauri = { version = "2", features = ["tray-icon"] }
 uuid = { version = "1", features = ["v4"] }
 
 [features]
@@ -27,4 +39,4 @@ custom-protocol = ["tauri/custom-protocol"]
 lto = "thin"
 codegen-units = 1
 strip = true
-panic = "abort"
+panic = "unwind"

@@ -330,6 +330,9 @@ pub async fn integration_action(
             Ok(json!({"channel":result["channel"],"ts":result["ts"]}))
         }
         ("mcp", "tools") => {
+            if c.config["transport"] == "stdio" {
+                return crate::stdio::request(c, token, "tools/list", json!({})).await;
+            }
             mcp_request(
                 client,
                 &base_url(&c.config)?,
@@ -340,6 +343,9 @@ pub async fn integration_action(
             .await
         }
         ("mcp", "call") => {
+            if c.config["transport"] == "stdio" {
+                return crate::stdio::request(c, token, "tools/call", args.clone()).await;
+            }
             mcp_request(
                 client,
                 &base_url(&c.config)?,
@@ -366,7 +372,33 @@ async fn mcp_rpc(
         .header("MCP-Protocol-Version", version)
         .json(&payload);
     if !token.is_empty() {
-        request = request.bearer_auth(token);
+        if token.starts_with('{') {
+            let headers: Value =
+                serde_json::from_str(token).map_err(|_| "Invalid stored MCP headers")?;
+            for (name, value) in headers.as_object().ok_or("Invalid stored MCP headers")? {
+                if [
+                    "host",
+                    "content-length",
+                    "connection",
+                    "mcp-session-id",
+                    "mcp-protocol-version",
+                ]
+                .contains(&name.to_lowercase().as_str())
+                {
+                    return Err("This MCP header cannot be overridden".into());
+                }
+                request = request.header(
+                    reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                        .map_err(|_| "Invalid MCP header name")?,
+                    reqwest::header::HeaderValue::from_str(
+                        value.as_str().ok_or("MCP header values must be text")?,
+                    )
+                    .map_err(|_| "Invalid MCP header value")?,
+                );
+            }
+        } else {
+            request = request.bearer_auth(token);
+        }
     }
     if let Some(id) = session {
         request = request.header("Mcp-Session-Id", id);
@@ -417,11 +449,20 @@ async fn mcp_rpc(
     let value = result.ok_or("The MCP server returned an invalid JSON-RPC response")?;
     if let Some(error) = value.get("error") {
         let message = error["message"].as_str().unwrap_or("Tool request failed");
-        let clean = if token.is_empty() {
+        let mut clean = if token.is_empty() {
             message.to_string()
         } else {
             message.replace(token, "[redacted]")
         };
+        if let Ok(Value::Object(values)) = serde_json::from_str::<Value>(token) {
+            for value in values
+                .values()
+                .filter_map(Value::as_str)
+                .filter(|v| !v.is_empty())
+            {
+                clean = clean.replace(value, "[redacted]");
+            }
+        }
         return Err(format!(
             "MCP: {}",
             clean.chars().take(400).collect::<String>()
@@ -448,7 +489,7 @@ pub async fn mcp_request(
         .clone();
     let mut session = shared.lock().await;
     if session.is_none() {
-        let (init, id)=mcp_rpc(client,base,token,None,"2025-03-26",json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Teammate","version":"0.2.0"}}})).await?;
+        let (init, id)=mcp_rpc(client,base,token,None,"2025-03-26",json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"Teammate","version":env!("CARGO_PKG_VERSION")}}})).await?;
         let version = init["protocolVersion"]
             .as_str()
             .unwrap_or("2025-03-26")

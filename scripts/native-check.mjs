@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, generateKeyPairSync, sign } from "node:crypto";
+import { checkFeatures } from "./native-features.mjs";
 
 if (process.platform !== "win32")
   throw new Error("This native WebView2 check runs on Windows.");
@@ -14,7 +15,32 @@ if (!directory.startsWith(root + sep))
 await mkdir(directory, { recursive: true });
 await mkdir("design/screenshots", { recursive: true });
 let externalCalls = 0;
+let inspection = {};
+const publisher = generateKeyPairSync("ed25519");
+const publisherKey = publisher.publicKey
+  .export({ type: "spki", format: "der" })
+  .subarray(-32)
+  .toString("base64");
+const catalog = Buffer.from(
+  JSON.stringify({
+    plugins: [
+      {
+        id: "test/signed-theme",
+        name: "Signed theme",
+        description: "Test signed catalog",
+        version: "1.0.0",
+        theme: { accent: "#83c9f4" },
+      },
+    ],
+  }),
+);
+const signature = sign(null, catalog, publisher.privateKey).toString("base64");
 const fixture = createServer(async (request, response) => {
+  if (request.url === "/catalog.json" || request.url === "/catalog.json.sig") {
+    response.writeHead(200, { "Content-Type": "application/octet-stream" });
+    response.end(request.url.endsWith(".sig") ? signature : catalog);
+    return;
+  }
   let source = "";
   for await (const chunk of request) source += chunk;
   const body = source ? JSON.parse(source) : {};
@@ -23,6 +49,60 @@ const fixture = createServer(async (request, response) => {
     result = { data: [{ id: "native-check-model" }] };
   else if (request.url === "/v1/chat/completions") {
     const results = body.messages.filter((m) => m.role === "tool");
+    const prompt = body.messages[1].content;
+    const reply = (message) => ({ choices: [{ message }] });
+    const call = (name, args, id = "feature-call") => ({
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id,
+          type: "function",
+          function: { name, arguments: JSON.stringify(args) },
+        },
+      ],
+    });
+    let feature;
+    if (prompt.startsWith("Delegation integration"))
+      feature = results.length
+        ? {
+            role: "assistant",
+            content: "Delegated result received: " + results[0].content,
+          }
+        : call("delegate_task", {
+            botId: "operations",
+            title: "Delegated fixture work",
+            description: "Return the fixture result.",
+          });
+    else if (prompt.startsWith("Delegated fixture work"))
+      feature = { role: "assistant", content: "Delegated fixture result" };
+    else if (prompt.startsWith("Routine integration"))
+      feature = { role: "assistant", content: "Scheduled task finished" };
+    else if (prompt.startsWith("Native inspect integration")) {
+      if (!results.length) {
+        feature = call("computer_displays", {});
+        feature.tool_calls.push({
+          ...call("computer_windows", {}, "windows-call").tool_calls[0],
+        });
+      } else {
+        for (const result of results) {
+          Object.assign(inspection, JSON.parse(result.content));
+        }
+        feature = { role: "assistant", content: "Inspection complete" };
+      }
+    } else if (prompt.startsWith("Native action ")) {
+      const action = JSON.parse(prompt.split("\n\n").slice(1).join("\n\n"));
+      if (results.length) {
+        if (JSON.parse(results[0].content).error)
+          throw Error(results[0].content);
+        feature = { role: "assistant", content: "Native action completed" };
+      } else feature = call(action.name, action.args);
+    }
+    if (feature) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(reply(feature)));
+      return;
+    }
     const tool =
       results.length === 0
         ? {
@@ -127,8 +207,8 @@ const app = spawn(
     env: {
       ...process.env,
       TEAMMATE_DATA_DIR: directory,
-    WEBVIEW2_USER_DATA_FOLDER: resolve(directory, 'webview'),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort} --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`,
+      WEBVIEW2_USER_DATA_FOLDER: resolve(directory, "webview"),
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort} --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`,
     },
     stdio: "ignore",
   },
@@ -213,6 +293,13 @@ try {
   console.log(
     "Native desktop check passed: real WebView2 → Rust IPC → model HTTP → workspace write → approval → MCP tool → saved result.",
   );
+  await checkFeatures(page, {
+    directory,
+    endpoint,
+    pid: app.pid,
+    inspect: () => inspection,
+    publisherKey,
+  });
 } finally {
   if (browser) await browser.close().catch(() => {});
   app.kill();

@@ -1,7 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod agent;
+mod computer;
+mod desktop;
+mod marketplace;
 mod models;
+mod orchestration;
 mod services;
+mod stdio;
 #[cfg(test)]
 mod test_support;
 
@@ -51,6 +56,9 @@ pub struct Task {
     output: String,
     error: String,
     waiting_approval: bool,
+    parent_id: String,
+    waiting_child: String,
+    schedule_id: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,7 +115,8 @@ fn defaults() -> Value {
     json!({"workspaceName":"My workspace","ownerName":"","theme":"dark","accent":"#b4a0ff",
       "density":"comfortable","fontSize":14,"radius":14,"sidebarCompact":false,
       "reduceMotion":false,"font":"sans","background":"glow","defaultView":"home",
-      "showActivity":true,"showStarters":true,"setupComplete":false,"maxSteps":12,"visionProviderId":""})
+      "showActivity":true,"showStarters":true,"setupComplete":false,"maxSteps":12,"visionProviderId":"",
+      "rootStepBudget":60,"maxConcurrentRuns":3,"runInBackground":false,"computerEnabled":false,"computerInput":false,"computerBotIds":[],"computerHideWindow":true,"computerExpiresAt":0})
 }
 fn validate_settings(input: &Value) -> Result<Value, String> {
     let mut settings = defaults();
@@ -148,7 +157,13 @@ fn validate_settings(input: &Value) -> Result<Value, String> {
     {
         return Err("Use a six digit hex accent color".into());
     }
-    for (key, min, max) in [("fontSize", 12, 18), ("radius", 0, 24), ("maxSteps", 1, 30)] {
+    for (key, min, max) in [
+        ("fontSize", 12, 18),
+        ("radius", 0, 24),
+        ("maxSteps", 1, 30),
+        ("rootStepBudget", 1, 300),
+        ("maxConcurrentRuns", 1, 8),
+    ] {
         let value = settings[key].as_i64().ok_or(format!("Invalid {key}"))?;
         if !(min..=max).contains(&value) {
             return Err(format!("{key} must be between {min} and {max}"));
@@ -160,10 +175,28 @@ fn validate_settings(input: &Value) -> Result<Value, String> {
         "showActivity",
         "showStarters",
         "setupComplete",
+        "runInBackground",
+        "computerEnabled",
+        "computerInput",
+        "computerHideWindow",
     ] {
         if !settings[key].is_boolean() {
             return Err(format!("Invalid {key}"));
         }
+    }
+    if !settings["computerBotIds"].as_array().is_some_and(|ids| {
+        ids.len() <= 100
+            && ids
+                .iter()
+                .all(|v| v.as_str().is_some_and(|s| s.len() <= 100))
+    }) {
+        return Err("Choose valid teammates for computer access".into());
+    }
+    if !settings["computerExpiresAt"]
+        .as_i64()
+        .is_some_and(|n| n >= 0)
+    {
+        return Err("Invalid computer access expiry".into());
     }
     Ok(settings)
 }
@@ -187,6 +220,15 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
         ("tasks", "error", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "continuation", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "waiting_approval", "INTEGER NOT NULL DEFAULT 0"),
+        ("tasks", "parent_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "root_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "waiting_child", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "schedule_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "auto_start", "INTEGER NOT NULL DEFAULT 0"),
+        ("tasks", "generation", "INTEGER NOT NULL DEFAULT 0"),
+        ("tasks", "parent_generation", "INTEGER NOT NULL DEFAULT 0"),
+        ("tasks", "delegate_call_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "budget_remaining", "INTEGER NOT NULL DEFAULT 60"),
         ("approvals", "tool_name", "TEXT NOT NULL DEFAULT ''"),
         ("approvals", "arguments", "TEXT NOT NULL DEFAULT '{}'"),
     ] {
@@ -205,8 +247,11 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
             .map_err(db_error)?;
         }
     }
+    orchestration::migrate(&db)?;
+    marketplace::migrate(&db)?;
     db.execute_batch("DELETE FROM approvals WHERE is_demo=1; DELETE FROM task_events WHERE task_id IN(SELECT id FROM tasks WHERE is_demo=1); DELETE FROM tasks WHERE is_demo=1;
       UPDATE tasks SET status='paused',error='The app restarted during this run. Run it again when ready.' WHERE status='running';").map_err(db_error)?;
+    db.execute("UPDATE tasks SET status='failed',error='The app restarted while this delegated task was running. Its parent will receive this failure.' WHERE parent_id<>'' AND status='paused' AND waiting_approval=0 AND waiting_child=''",[]).map_err(db_error)?;
     for (id,name,role,description,color,instructions) in [
       ("research","Scout","Research & synthesis","Turns scattered information into clear decisions.","#b4a0ff","Research carefully. Cite sources returned by tools. Distinguish evidence from inference. Produce a concise, useful result."),
       ("operations","Atlas","Planning & operations","Keeps projects organized and moving forward.","#8bd7b6","Turn goals into concrete plans. Highlight priorities, dependencies, and next actions. Ask for approval before external changes."),
@@ -233,9 +278,10 @@ impl AppState {
             )
             .optional()
             .map_err(db_error)?;
-        value
-            .map(|v| serde_json::from_str(&v).map_err(db_error))
-            .unwrap_or_else(|| Ok(defaults()))
+        match value {
+            Some(v) => validate_settings(&serde_json::from_str::<Value>(&v).map_err(db_error)?),
+            None => Ok(defaults()),
+        }
     }
     fn connections(&self) -> Result<Vec<Connection>, String> {
         let db = self.lock()?;
@@ -280,7 +326,7 @@ impl AppState {
     }
     fn tasks(&self) -> Result<Vec<Task>, String> {
         let db = self.lock()?;
-        let mut stmt=db.prepare("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval FROM tasks t JOIN bots b ON b.id=t.bot_id ORDER BY t.created_at DESC,t.rowid DESC LIMIT 200").map_err(db_error)?;
+        let mut stmt=db.prepare("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id FROM tasks t JOIN bots b ON b.id=t.bot_id ORDER BY t.created_at DESC,t.rowid DESC LIMIT 500").map_err(db_error)?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(Task {
@@ -295,10 +341,16 @@ impl AppState {
                     output: r.get(8)?,
                     error: r.get(9)?,
                     waiting_approval: r.get::<_, i64>(10)? != 0,
+                    parent_id: r.get(11)?,
+                    waiting_child: r.get(12)?,
+                    schedule_id: r.get(13)?,
                 })
             })
             .map_err(db_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
+    }
+    fn task(&self, id: &str) -> Result<Task, String> {
+        self.lock()?.query_row("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id FROM tasks t JOIN bots b ON b.id=t.bot_id WHERE t.id=?1",[id],|r|Ok(Task{id:r.get(0)?,title:r.get(1)?,description:r.get(2)?,bot_id:r.get(3)?,bot_name:r.get(4)?,status:r.get(5)?,created_at:r.get(6)?,updated_at:r.get(7)?,output:r.get(8)?,error:r.get(9)?,waiting_approval:r.get::<_,i64>(10)?!=0,parent_id:r.get(11)?,waiting_child:r.get(12)?,schedule_id:r.get(13)?})).optional().map_err(db_error)?.ok_or("Task not found".into())
     }
     fn event(&self, task_id: &str, message: &str) -> Result<(), String> {
         self.lock()?
@@ -358,12 +410,21 @@ fn bootstrap(state: State<'_, AppState>) -> Result<Value, String> {
     drop(stmt);
     drop(db);
     Ok(
-        json!({"settings":state.settings()?,"bots":state.bots()?,"tasks":state.tasks()?,"connections":state.connections()?,"approvals":approvals,"downloads":state.downloads.lock().map_err(db_error)?.values().cloned().collect::<Vec<_>>(),"device":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"threads":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"version":env!("CARGO_PKG_VERSION")}}),
+        json!({"settings":state.settings()?,"bots":state.bots()?,"tasks":state.tasks()?,"connections":state.connections()?,"approvals":approvals,"schedules":orchestration::list(&state)?,"plugins":marketplace::installed(&state)?,"pluginSources":marketplace::sources(&state)?,"downloads":state.downloads.lock().map_err(db_error)?.values().cloned().collect::<Vec<_>>(),"device":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"threads":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"version":env!("CARGO_PKG_VERSION")}}),
     )
 }
 #[tauri::command]
 fn save_settings(settings: Value, state: State<'_, AppState>) -> Result<Value, String> {
-    let validated = validate_settings(&settings)?;
+    let mut validated = validate_settings(&settings)?;
+    let current = state.settings()?;
+    for key in [
+        "computerEnabled",
+        "computerInput",
+        "computerBotIds",
+        "computerExpiresAt",
+    ] {
+        validated[key] = current[key].clone();
+    }
     state
         .lock()?
         .execute(
@@ -475,17 +536,17 @@ fn task_events(task_id: String, state: State<'_, AppState>) -> Result<Vec<TaskEv
 }
 fn launch(app: tauri::AppHandle, task_id: String, resume: bool) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let task = state
-        .tasks()?
-        .into_iter()
-        .find(|t| t.id == task_id)
-        .ok_or("Task not found")?;
+    let task = state.task(&task_id)?;
     if task.status == "running" {
         return Err("This task is already running".into());
     }
     if task.waiting_approval && !resume {
         return Err("Review the pending approval first".into());
     }
+    if !task.waiting_child.is_empty() && !resume {
+        return Err("Cancel this run and its delegated work before starting it again".into());
+    }
+    let limit = state.settings()?["maxConcurrentRuns"].as_i64().unwrap_or(3);
     let bot = state
         .bots()?
         .into_iter()
@@ -499,9 +560,10 @@ fn launch(app: tauri::AppHandle, task_id: String, resume: bool) -> Result<(), St
         return Err("Choose a model connection".into());
     }
     let _ = connection_secret(&provider)?;
-    let changed = state.lock()?.execute("UPDATE tasks SET status='running',waiting_approval=0,error='',output=CASE WHEN ?3 THEN output ELSE '' END,updated_at=?2 WHERE id=?1 AND status<>'running' AND (waiting_approval=0 OR ?3)",params![task_id,now(),resume]).map_err(db_error)?;
+    let budget = state.settings()?["rootStepBudget"].as_i64().unwrap_or(60);
+    let changed = state.lock()?.execute("UPDATE tasks SET status='running',waiting_approval=0,error='',output=CASE WHEN ?3 THEN output ELSE '' END,generation=generation+CASE WHEN ?3 THEN 0 ELSE 1 END,root_id=CASE WHEN root_id='' THEN id ELSE root_id END,budget_remaining=CASE WHEN NOT ?3 AND parent_id='' THEN ?4 ELSE budget_remaining END,updated_at=?2 WHERE id=?1 AND status<>'running' AND (waiting_approval=0 OR ?3) AND (SELECT COUNT(*) FROM tasks WHERE status='running')<?5",params![task_id,now(),resume,budget,limit]).map_err(db_error)?;
     if changed != 1 {
-        return Err("This task is already running or needs an approval decision".into());
+        return Err("Your concurrent task limit is reached, or this task is already running. Wait or increase the limit in Preferences.".into());
     }
     state.event(
         &task_id,
@@ -536,21 +598,7 @@ fn start_task(task_id: String, app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command(rename_all = "camelCase")]
 fn cancel_task(task_id: String, app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    if let Some(handle) = state.active.lock().map_err(db_error)?.remove(&task_id) {
-        handle.abort();
-    }
-    let changed=state.lock()?.execute("UPDATE tasks SET status='canceled',waiting_approval=0,updated_at=?2 WHERE id=?1 AND status IN('queued','running','paused')",params![task_id,now()]).map_err(db_error)?;
-    if changed == 0 {
-        return Err("This task has already finished".into());
-    }
-    state
-        .lock()?
-        .execute(
-            "UPDATE approvals SET status='rejected' WHERE task_id=?1 AND status='pending'",
-            [&task_id],
-        )
-        .map_err(db_error)?;
-    state.event(&task_id, "Canceled by you")?;
+    orchestration::cancel_tree(&state, &task_id)?;
     let _ = app.emit("workspace-updated", json!({"taskId":task_id}));
     Ok(())
 }
@@ -611,6 +659,9 @@ async fn save_connection(
     mut input: ConnectionInput,
     state: State<'_, AppState>,
 ) -> Result<Connection, String> {
+    if !input.id.is_empty() && state.connection(&input.id)?.config["pluginId"].is_string() {
+        return Err("Manage this connection through its installed plugin in Marketplace".into());
+    }
     if input.label.trim().is_empty() || input.label.chars().count() > 80 {
         return Err("Use a connection name between 1 and 80 characters".into());
     }
@@ -654,8 +705,27 @@ async fn test_connection(
 ) -> Result<Value, String> {
     let c = state.connection(&connection_id)?;
     let token = connection_secret(&c)?;
-    let (_, account) =
-        services::verify_connection(&state.client, &c.kind, &c.config, &token).await?;
+    let account = if c.kind == "mcp" && c.config["transport"] == "stdio" {
+        let result = stdio::request(&c, &token, "tools/list", json!({})).await?;
+        let list = result["tools"]
+            .as_array()
+            .filter(|v| v.len() <= 100)
+            .ok_or("The server must expose at most 100 tools")?;
+        let mut config = c.config.clone();
+        config["tools"] = json!(list);
+        state
+            .lock()?
+            .execute(
+                "UPDATE connections SET config=?2 WHERE id=?1",
+                params![c.id, config.to_string()],
+            )
+            .map_err(db_error)?;
+        format!("{} tools", list.len())
+    } else {
+        services::verify_connection(&state.client, &c.kind, &c.config, &token)
+            .await?
+            .1
+    };
     state
         .lock()?
         .execute(
@@ -669,6 +739,12 @@ async fn test_connection(
 fn remove_connection(connection_id: String, app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let connection = state.connection(&connection_id)?;
+    if connection.config["pluginId"].is_string() {
+        return Err(
+            "Uninstall this plugin from Marketplace to remove its connection and managed runtime"
+                .into(),
+        );
+    }
     if connection.config["hasSecret"] == true {
         match secret_entry(&connection_id)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
@@ -743,7 +819,21 @@ fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 fn main() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    if std::env::var_os("TEAMMATE_DATA_DIR").is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }));
+    }
+    builder
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--background"]),
+        ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let dir = if let Some(value) = std::env::var_os("TEAMMATE_DATA_DIR") {
                 let path = PathBuf::from(value);
@@ -759,7 +849,7 @@ fn main() {
             };
             let db = open_database(&dir.join("teammate.sqlite3")).map_err(std::io::Error::other)?;
             let client = reqwest::Client::builder()
-                .user_agent("Teammate/0.2")
+                .user_agent("Teammate/0.3")
                 .connect_timeout(std::time::Duration::from_secs(10))
                 .timeout(std::time::Duration::from_secs(180))
                 .redirect(reqwest::redirect::Policy::none())
@@ -771,6 +861,9 @@ fn main() {
                 active: Mutex::new(HashMap::new()),
                 downloads: Mutex::new(HashMap::new()),
             });
+            computer::reset(&app.state::<AppState>()).map_err(std::io::Error::other)?;
+            desktop::setup(app)?;
+            orchestration::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -789,12 +882,41 @@ fn main() {
             remove_connection,
             browse_connection,
             open_external,
+            computer::set_computer_access,
+            computer::computer_preview,
+            desktop::autostart_status,
+            desktop::set_autostart,
+            marketplace::marketplace_search,
+            marketplace::save_plugin_source,
+            marketplace::delete_plugin_source,
+            marketplace::review_plugin,
+            marketplace::import_plugin,
+            marketplace::install_plugin,
+            marketplace::uninstall_plugin,
+            marketplace::toggle_plugin,
+            marketplace::plugin_theme,
+            orchestration::save_schedule,
+            orchestration::schedule_list,
+            orchestration::schedule_history,
+            orchestration::delete_schedule,
+            orchestration::run_schedule_now,
             models::local_models,
             models::download_model,
             models::cancel_download
         ])
-        .run(tauri::generate_context!())
-        .expect("Teammate could not start");
+        .build(tauri::generate_context!())
+        .expect("Teammate could not start")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                desktop::stop(app);
+                if let Ok(active) = app.state::<AppState>().active.lock() {
+                    for h in active.values() {
+                        h.abort();
+                    }
+                }
+                tauri::async_runtime::block_on(stdio::stop_all());
+            }
+        });
 }
 #[cfg(test)]
 mod tests {

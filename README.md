@@ -4,7 +4,7 @@ An open source desktop workspace for AI teammates, built with a Rust runtime and
 
 ![Teammate workspace](design/screenshots/overview.png)
 
-## What works in 0.2
+## What works in 0.3
 
 - **Guided setup:** name your workspace, choose local or cloud intelligence, connect services, and set your style.
 - **Personalization:** dark, light, and system themes; custom accent colors; text size; density; typography; corner radius; compact navigation; reduced motion; start page; preferences import and export.
@@ -14,7 +14,11 @@ An open source desktop workspace for AI teammates, built with a Rust runtime and
 - **Local model library:** inspect an Ollama runtime, download supported model tags (including supported Hugging Face GGUF tags), follow progress, cancel, and connect installed models. Ollama must be installed and running separately.
 - **GitHub:** verify an account, browse up to 100 accessible repositories, read up to 50 open issues per repository, and create issues after approval.
 - **Slack:** verify a workspace, list up to 100 accessible public/private channels, read up to 50 recent messages, and send messages after approval.
-- **MCP extensions:** import remote MCP configuration, discover Streamable HTTP tools, keep sessions between actions, and review imported calls before execution. Includes a setup guide for Microsoft’s Playwright MCP browser server.
+- **Native computer use:** discover displays and windows, capture screenshots, click, move, type, press key chords, scroll, and drag. Grant time-limited access to selected teammates; input actions require approval. Revoke access from the app, tray, or Ctrl+Alt+Escape.
+- **Plugin marketplace:** featured recommendations, official MCP Registry search and pagination, signed community catalogs, exact-version review, managed npm installs, persistent stdio and HTTP servers, plugin updates, enable/disable, uninstall, teammate packs, and themes. [Plugin and publishing guide](docs/PLUGINS.md).
+- **Routines:** once, interval, daily, and weekly schedules with IANA time zones, daylight saving handling, missed-run policies, overlap prevention, durable history, and manual runs.
+- **Bot delegation:** teammates discover each other, create durable child tasks, work concurrently within your limit, and receive results automatically. Task trees share a turn budget; ancestor loops, excessive depth, and unbounded fan-out are blocked.
+- **Background work:** an optional system tray mode, optional OS sign-in startup, and a single default-workspace instance. Routines and tasks keep running while the window is hidden.
 - **Vision bridge:** send MCP tool images directly to an image capable model, or use an explicitly selected vision companion to describe images for text models. No model gains image understanding merely by enabling a setting.
 - **Local persistence and credentials:** SQLite stores profiles, tasks, decisions, and connection metadata. Windows Credential Manager / Linux Secret Service stores keys separately.
 - **Windows and Linux packages:** Windows NSIS installer; Linux Debian and AppImage packages.
@@ -37,39 +41,33 @@ GitHub uses a personal access token. Grant metadata and issues read access for t
 
 Slack uses a bot or user token. Typical scopes are `channels:read`, `groups:read`, `channels:history`, `groups:history`, and `chat:write`. Invite the app to the channels it should read. Slack workspace policy and token scopes may limit access.
 
-### Browser tools
+### Computer use
 
-Install Node.js and start a [Playwright MCP server](https://github.com/microsoft/playwright-mcp):
+Open **Computer**, select teammates, choose an access duration, and enable screen access. Allow mouse and keyboard separately. Start a task such as “Capture my desktop and describe the open window; ask before interacting.” An image capable model or an explicitly chosen vision companion is required to understand screenshots. Access expires and resets on restart. Ctrl+Alt+Escape and the tray stop control revoke access between actions. The interface reports when the global shortcut is unavailable.
 
-```sh
-npx @playwright/mcp@latest --port 8931
-```
+Windows native control works through OS capture and input APIs. Linux X11 is supported. Wayland capture and input depend on your compositor and desktop portals; grant the OS permission when prompted. Secure desktops, elevated windows, and protected content remain subject to operating system restrictions.
 
-In **Extensions → Set up browser tools**, connect `http://localhost:8931/mcp`. Keep the server running. Browser state is retained between tool calls. Text models can work with accessibility snapshots; screenshot interpretation requires a vision capable connection or companion.
+### Browser tools and plugins
 
-### Importing extensions
+Open **Marketplace**, select Playwright Browser, and review the exact npm version before installing. Node.js with npm must be installed and visible on PATH. The app manages the server process and browser state. You can also connect an existing Playwright HTTP server or import a stdio configuration, a Teammate JSON manifest, or a manifest bundle.
 
-Use **Extensions → Import extension** with either format:
+Use **Installed** to disable, review an update, apply a plugin theme, or uninstall. Add a signed community catalog through **Catalogs**. Read the [plugin and publishing guide](docs/PLUGINS.md) for supported manifests, runtimes, credentials, signatures, and bundles.
 
-```json
-{ "name": "My tools", "url": "http://localhost:8931/mcp" }
-```
+### Routines and delegation
 
-```json
-{ "mcpServers": { "browser": { "url": "http://localhost:8931/mcp" } } }
-```
+Create a routine in **Routines** with a teammate, task context, timing, time zone, and missed-run policy. The app must be running and the computer awake. Enable tray background work and sign-in startup in **Preferences** if desired. Missed occurrences coalesce to one catch-up run or are skipped; concurrent occurrences of the same routine never overlap. External actions still require approval. History links each occurrence to its task.
 
-The app shows the endpoint for review and verifies it before saving. Enter tokens separately in the connection form. Command based stdio servers need an HTTP bridge; the app does not execute commands from imported manifests.
+Teammates can use **team_directory** and **delegate_task** during ordinary tasks. Each child uses its own model and private workspace; its parent must pass the necessary context. Results and failures return automatically. The task detail page shows parent and child links. Canceling a parent cancels active descendants. The shared turn budget, concurrent run limit, three-level depth limit, and 32-child limit keep work bounded.
 
 ## Current boundaries
 
-This is an early usable desktop release. It does not yet bundle a native host computer controller, a model inference engine, an autonomous scheduler, a signed plugin marketplace, or every vendor’s proprietary API. Computer tools are available when provided by a compatible MCP server. The extension library is an import and connection surface; it is not a package registry or a claim that arbitrary plugins are compatible.
+This is an early desktop release with the four core workflows implemented. It does not bundle model inference or model weights. It supports OpenAI compatible model endpoints, rather than every vendor's proprietary protocol. The marketplace supports MCP HTTP and stdio tools, npm runtimes, signed declarative catalogs, teammate packs, and themes; it does not promise compatibility with arbitrary native plugins. Interactive OAuth, legacy SSE-only transports, and OCI package management need a compatible bridge or an explicitly configured local program.
 
 Model quality and tool reliability vary. A weak text model may not reliably perform an agent workflow. A vision companion supplies descriptions, with the usual image interpretation limitations. No inference model is bundled, and downloads follow the model runtime’s supported formats and licenses.
 
 External services and cloud models receive the context needed for the action. A vision companion receives tool images when configured. Local storage is not encrypted by the app; OS key storage protects credentials separately. Workspace path checks are intended to prevent accidental file escape, not to sandbox an untrusted native extension. Imported MCP tools may have broad access on the server; review their inputs and run only servers you trust.
 
-Tasks pause on app restart and can be run again. An interrupted model download can resume cached layers through Ollama. GitHub/Slack browsing currently shows bounded first pages rather than complete account exports. Disconnecting a connection pauses active task runs. The desktop process must stay open for tasks to continue.
+Interrupted direct tasks pause on restart. Interrupted delegated leaf tasks report a failure to their waiting parent; pending approvals and delegation continuations remain durable. An interrupted model download can resume cached layers through Ollama. GitHub/Slack browsing currently shows bounded first pages rather than complete account exports. Disconnecting a connection pauses active task runs. The desktop process must stay open or in its tray for tasks and schedules to continue.
 
 ## Build from source
 
@@ -98,11 +96,11 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-Rust checks cover settings, migrations, credential storage, endpoint validation, model adapters, workspace files, image routing, MCP sessions, and full task/approval continuation. Browser UI tests explicitly mock the native command boundary. They cover setup, errors, connections, teammates, tasks, downloads, extensions, vision settings, persistence, keyboard navigation, and responsive layouts.
+Rust checks cover settings, migrations, credential storage, endpoint validation, model adapters, workspace files, image routing, MCP HTTP and stdio sessions, native action validation, plugin signatures and bundle checks, schedule timing and deduplication, delegation loops and cancellation, and full task/approval continuation. Browser UI tests explicitly mock the native command boundary. They cover setup, errors, connections, teammates, tasks, downloads, extensions, vision settings, persistence, keyboard navigation, and responsive layouts.
 
 Optional live checks are ignored by default. `TEAMMATE_TEST_GITHUB_TOKEN` enables the GitHub read-only check; `TEAMMATE_TEST_MCP_URL` plus a local preview enables the browser check. Never put credentials in source or shell history.
 
-After a Windows release build, `npm run test:native` launches the real WebView2 desktop app in an isolated temporary workspace. It checks setup, Rust IPC, model discovery, a file write, exact approval, an MCP call, and the saved result using a deterministic local HTTP fixture. It does not require a paid model key or change your normal workspace.
+After a Windows release build, `npm run test:native` launches the real WebView2 desktop app in an isolated temporary workspace. It checks setup, Rust IPC, a file write, exact approvals, MCP calls, automatic scheduling, parent/child delegation, signed catalogs, stdio installation and update, managed installation of a real npm package, and native screen capture plus keyboard and pointer input in an editor created inside the isolated test app. It does not require a paid model key or change your normal workspace.
 
 ### Storage
 
