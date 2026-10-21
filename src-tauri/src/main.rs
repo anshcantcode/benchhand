@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod agent;
+mod cli_models;
 mod computer;
 mod desktop;
 mod marketplace;
@@ -915,6 +916,7 @@ fn main() {
             orchestration::delete_schedule,
             orchestration::run_schedule_now,
             models::local_models,
+            cli_models::detect_model_clients,
             models::download_model,
             models::cancel_download,
             remote::remote_status,

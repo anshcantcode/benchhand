@@ -4,6 +4,25 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
+### Added
+
+- Signed-in Claude Code, Codex CLI and Gemini CLI model connections, alongside local runtimes and cloud APIs. Automatic installation detection, optional executable paths, per-teammate model selection and clear account/usage failure messages. Credentials stay with each CLI.
+- A live task transcript with streamed model output, provider-published reasoning, exact tool inputs and results, turn timing, token usage when supplied, filters and JSON export. Private internal thinking is not exposed.
+- Streaming Chat Completions and Responses transports, including an optional request for reasoning summaries on compatible Responses models.
+
+### Changed
+
+- Models is one home for signed-in tools, connected models, local downloads and cloud endpoints, with a direct route to assigning a teammate.
+- Refined neutral dark surfaces, clearer model setup and a full-width activity transcript. Expanded tool details and scroll position survive live task refreshes.
+
+### Limitations
+
+- CLI connections require a recent client installed and signed in separately; access and limits depend on the provider. They send text context and use Benchhand tools through structured actions, not the CLI's own tool ecosystem. A configured vision companion can describe images.
+- Gemini's adapter is covered by protocol/fixture checks; the live signed-in checks on the development PC cover Claude Code and Codex CLI. CLI subprocesses have a five-minute turn timeout and are stopped on task cancellation.
+
+
 ## [0.3.2] - 2026-10-20
 
 ### Changed

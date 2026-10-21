@@ -5,7 +5,7 @@
 # Benchhand
 
 **A small team of AI bots that runs on your own computer.**
-Give a teammate a goal, watch the work happen, and approve anything that leaves the machine.
+Give a teammate a goal, inspect its model and tool activity, and review external writes before they run.
 
 [![Desktop packages](https://github.com/anshcantcode/benchhand/actions/workflows/desktop.yml/badge.svg)](https://github.com/anshcantcode/benchhand/actions/workflows/desktop.yml)
 [![Latest release](https://img.shields.io/github/v/release/anshcantcode/benchhand?include_prereleases&label=release)](https://github.com/anshcantcode/benchhand/releases)
@@ -28,7 +28,7 @@ Give a teammate a goal, watch the work happen, and approve anything that leaves 
 Most AI tools are a chat box. Benchhand is a **durable task system**: each teammate has a role, its own model, instructions and private workspace. Tasks survive restarts, teammates hand work to each other, routines run on a schedule, and every send, post or imported tool call stops in an approval queue until you decide.
 
 - **Local first.** Tasks, results and history live in SQLite on your machine. Keys live in the OS credential store, never in prompts.
-- **Your models.** Ollama, LM Studio, vLLM, OpenAI, OpenRouter, Groq, or any OpenAI-compatible endpoint, chosen per teammate.
+- **Your models.** Signed-in Claude Code, Codex CLI and Gemini CLI, plus Ollama, LM Studio, vLLM and cloud APIs, chosen per teammate.
 - **Reviewable autonomy.** You see the exact payload of every consequential action before it runs.
 - **Open tools.** MCP servers over HTTP and stdio, a marketplace with signed community catalogs, and teammate packs.
 
@@ -37,11 +37,11 @@ Most AI tools are a chat box. Benchhand is a **durable task system**: each teamm
 | | |
 | --- | --- |
 | **Teammates** | Editable name, role, instructions, colour, model and private file workspace for each bot. |
-| **Tasks** | Native tool calling or a JSON action adapter for small local models; a step list for every run, live activity, cancel, re-run, Markdown export. |
+| **Tasks** | Native tool calling or a JSON action adapter for small local models; a step list for every run, a live transcript of model output, published reasoning and exact tool inputs/results, cancel, re-run, Markdown and activity export. |
 | **Approvals** | Slack messages, GitHub issues, computer input and MCP calls shown as they will appear, with the exact JSON one click away. Edit values before you approve. |
 | **Delegation** | Teammates discover each other and create child tasks. A shared turn budget, depth limit and loop detection keep runs bounded. |
 | **Routines** | Once, interval, daily and weekly schedules with IANA time zones, daylight saving handling and missed-run policies. |
-| **Model library** | Browse, download and connect Ollama models, including Hugging Face GGUF tags, with progress and cancellation. |
+| **Models** | Connect signed-in CLIs, local servers and cloud APIs. Browse and download Ollama models with progress and cancellation. |
 | **Connections** | GitHub, Slack, and Streamable HTTP MCP servers, with secrets in Windows Credential Manager or Linux Secret Service. |
 | **Marketplace** | Featured tools, Official MCP Registry search, signed catalogs, exact-version review, managed npm installs, updates and uninstall. |
 | **Computer control** | Time-limited, per-teammate screen capture and approved input. Stop at any time with Ctrl+Alt+Escape. |
@@ -68,7 +68,7 @@ Most AI tools are a chat box. Benchhand is a **durable task system**: each teamm
 ## Get started
 
 1. **Download** the Windows installer, Debian package or AppImage from [Releases](https://github.com/anshcantcode/benchhand/releases).
-2. **Connect a model.** Start [Ollama](https://ollama.com/download) and download a model from **Model library**, or add a cloud provider key in **Connections**.
+2. **Connect a model.** Open **Models** to connect an already signed-in Claude Code, Codex CLI or Gemini CLI; use [Ollama](https://ollama.com/download) for local models; or connect a cloud API key.
 3. **Give a teammate a task** from the overview, then follow it in **Tasks** and decide in **Approvals**.
 
 The [user guide](docs/USER_GUIDE.md) covers GitHub and Slack tokens, computer control, plugins, routines, delegation and current limits.
@@ -132,3 +132,9 @@ Please read the [code of conduct](CODE_OF_CONDUCT.md). Report security issues pr
 ## License
 
 [Apache-2.0](LICENSE). Model weights, external tools and services keep their own licences and terms.
+
+## Signed-in tools and activity
+
+In **Models**, scan this computer, connect an installed CLI, then choose the connection in a teammate's settings. Use `default` for that CLI's default model or enter a model ID your account can access. Sign in to the CLI separately first. Benchhand does not copy its login tokens; subscription eligibility, usage limits and charges remain subject to the provider. See [the setup and transparency guide](docs/MODELS_AND_ACTIVITY.md).
+
+Each task's **Live activity** shows model output as the transport exposes it, provider-published reasoning where supplied, tool inputs/results, timing and usage. Filter Model or Tools, expand exact payloads, or export the transcript. Private internal reasoning is not available. Activity can contain task/file data and is stored locally with task history.

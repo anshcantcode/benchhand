@@ -54,7 +54,7 @@
     ],
     pluginSources: [{ id: "featured", label: "Featured tools" }, { id: "registry", label: "Official MCP Registry" }],
     downloads: [{ id: "d1", model: "llama3.2:3b", state: "downloading", status: "Pulling model layers", completed: 1240000000, total: 2020000000 }],
-    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.3.2" },
+    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.0" },
   };
   // Event text matches what the runtime records, so the Steps list is derived the same way as in the app.
   const run = (start, ...lines) => [{ message: "Task created", createdAt: ago(start + 0.2) }, { message: "Run started", createdAt: ago(start) }, ...lines.map(([m, at]) => ({ message: m, createdAt: ago(at) }))];
@@ -65,9 +65,17 @@
     "t-plan": run(320, ["Thinking · step 1 of 12", 319], ["Running: Browse workspace files", 318], ["Tool completed: Browse workspace files", 318], ["Thinking · step 2 of 12", 312], ["Waiting for your approval", 305], ["Resuming after your decision", 304], ["You edited the inputs before approving", 304], ["Running: Save workspace file", 304], ["Tool completed: Save workspace file", 303.8], ["Thinking · step 3 of 12", 303], ["Task completed", 301]),
     "t-support": run(190, ["Thinking · step 1 of 12", 189.8], ["Running: Design studio · Read recent messages", 189], ["Tool reported an error: Design studio · Read recent messages", 188.8], ["Thinking · step 2 of 12", 188], ["Run stopped: Slack returned not_in_channel for #support.", 186]),
   };
+  events["t-triage"].push(
+    { id: 101, message: JSON.stringify({kind:"request",title:"OpenRouter · deepseek/deepseek-chat-v3",detail:"Turn 3 of 12. 7 messages in context; 8 tools available. Transport: chat."}), createdAt: ago(0.4) },
+    { id: 102, message: JSON.stringify({kind:"reasoning_summary",title:"Provider reasoning",detail:"The issue list is available. I will compare the crash reports against the delegated research before proposing priorities."}), createdAt: ago(0.3) },
+    { id: 103, message: JSON.stringify({kind:"tool_input",title:"Browse workspace files",detail:JSON.stringify({path:"reports"},null,2)}), createdAt: ago(0.2) },
+    { id: 104, message: JSON.stringify({kind:"tool_result",title:"Browse workspace files",detail:JSON.stringify({files:["triage-notes.md"]},null,2)}), createdAt: ago(0.15) },
+    { id: 105, message: JSON.stringify({kind:"model_output",title:"Model output",detail:"The duplicate reports share the same Wayland tray initialization path. Waiting for Scout’s comparison before writing the final triage."}), createdAt: ago(0.1) }
+  );
   const clone = (v) => JSON.parse(JSON.stringify(v));
   window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: async (c, a = {}) => {
     switch (c) {
+      case "detect_model_clients": return [{provider:"claude",installed:true,version:"Sample installation"},{provider:"codex",installed:true,version:"Sample installation"},{provider:"gemini",installed:false}];
       case "bootstrap": return clone(state);
       case "task_events": { const t = state.tasks.find((t) => t.id === a.taskId); const m = (now - (t?.createdAt || now)) / 60; return clone(events[a.taskId] || (t?.status === "completed" ? run(m, ["Thinking · step 1 of 12", m - 0.5], ["Task completed", m - 3]) : [{ message: "Task created", createdAt: t?.createdAt || now }])); }
       case "decide_approval": {

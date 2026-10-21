@@ -43,7 +43,10 @@ pub fn edited_arguments(original: &Value, edited: &Value) -> Result<Value, Strin
         Value::Array(_) => 4,
         Value::Object(_) => 5,
     };
-    if let Some(key) = before.keys().find(|k| kind(&before[*k]) != kind(&after[*k])) {
+    if let Some(key) = before
+        .keys()
+        .find(|k| kind(&before[*k]) != kind(&after[*k]))
+    {
         return Err(format!("{key} must keep its original type"));
     }
     Ok(edited.clone())
@@ -462,6 +465,7 @@ async fn run_with(
                     Err("Your user rejected this action. Do not retry it or attempt the same action using another tool.".into())
                 } else {
                     state.event(id, &format!("Running: {label}"))?;
+                    trace(state, id, "tool_input", &label, &args.to_string(), &secret)?;
                     emit();
                     if tool.action == "delegate_task" {
                         crate::orchestration::delegate(
@@ -522,6 +526,13 @@ async fn run_with(
             let visual = image_context(state, &provider, &mut output).await?;
             let text = output.to_string();
             let bounded = text.chars().take(40000).collect::<String>();
+            // Never copy image bytes into the activity log.
+            let trace_output = if text.len() > 40000 {
+                "Large tool result (image or document); retained in the model context.".to_string()
+            } else {
+                bounded.clone()
+            };
+            trace(state, id, "tool_result", &label, &trace_output, &secret)?;
             run.messages
                 .push(json!({"role":"tool","tool_call_id":call["id"],"content":bounded}));
             if let Some(visual) = visual {
@@ -552,14 +563,73 @@ async fn run_with(
         }
         state.event(id, &format!("Thinking · step {} of {max}", run.step))?;
         emit();
-        let message = services::model_turn(
+        trace(
+            state,
+            id,
+            "request",
+            &format!(
+                "{} · {}",
+                provider.label,
+                provider.config["model"].as_str().unwrap_or("default")
+            ),
+            &format!(
+                "Turn {} of {max}. {} messages in context; {} tools available. Transport: {}.",
+                run.step,
+                run.messages.len(),
+                definitions.len(),
+                provider.config["protocol"].as_str().unwrap_or("chat")
+            ),
+            &secret,
+        )?;
+        let mut chunks = Vec::<(String, String)>::new();
+        let turn_started = std::time::Instant::now();
+        let mut last_flush = std::time::Instant::now();
+        let result = services::model_turn_observed(
             &state.client,
             &provider,
             &secret,
             &run.messages,
             &definitions,
+            |kind, text| {
+                if chunks.last().is_none_or(|(k, _)| k != kind) {
+                    chunks.push((kind.to_string(), String::new()));
+                }
+                let buffer = &mut chunks.last_mut().unwrap().1;
+                let room = 32000usize.saturating_sub(buffer.len());
+                buffer.extend(text.chars().scan(0usize, |bytes, c| {
+                    *bytes += c.len_utf8();
+                    (*bytes <= room).then_some(c)
+                }));
+                if last_flush.elapsed() >= std::time::Duration::from_millis(500)
+                    || buffer.len() >= 30000
+                {
+                    for (kind, text) in &chunks {
+                        let _ = trace(state, id, kind, kind_label(kind), text, &secret);
+                    }
+                    chunks.clear();
+                    last_flush = std::time::Instant::now();
+                    emit();
+                }
+            },
         )
-        .await?;
+        .await;
+        for (kind, text) in &chunks {
+            trace(state, id, kind, kind_label(kind), text, &secret)?;
+        }
+        emit();
+        let message = result?;
+        trace(
+            state,
+            id,
+            "timing",
+            "Model turn finished",
+            &format!(
+                "Turn {} completed in {:.1} seconds",
+                run.step,
+                turn_started.elapsed().as_secs_f64()
+            ),
+            &secret,
+        )?;
         let calls = message["tool_calls"]
             .as_array()
             .cloned()
@@ -583,6 +653,36 @@ async fn run_with(
         run.messages.push(message);
         run.pending = calls;
     }
+}
+fn kind_label(kind: &str) -> &str {
+    match kind {
+        "model_output" => "Model output",
+        "reasoning_summary" => "Provider reasoning",
+        "usage" => "Token usage",
+        _ => "Model event",
+    }
+}
+fn trace(
+    state: &AppState,
+    id: &str,
+    kind: &str,
+    title: &str,
+    detail: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if detail.is_empty() {
+        return Ok(());
+    }
+    let bounded = detail.chars().take(32000).collect::<String>();
+    let clean = if secret.is_empty() {
+        bounded
+    } else {
+        bounded.replace(secret, "[redacted]")
+    };
+    state.event(
+        id,
+        &json!({"kind":kind,"title":title,"detail":clean}).to_string(),
+    )
 }
 #[cfg(test)]
 mod tests {
@@ -680,7 +780,10 @@ mod tests {
                             if decision == "edited" {
                                 assert!(body["messages"].as_array().unwrap().iter().any(|m| {
                                     m["role"] == "tool"
-                                        && m["content"].as_str().unwrap_or("").contains("inputsUsed")
+                                        && m["content"]
+                                            .as_str()
+                                            .unwrap_or("")
+                                            .contains("inputsUsed")
                                 }));
                             }
                             json!({"role":"assistant","content":"The plan is ready. The external action has been handled according to your decision."})
@@ -726,6 +829,21 @@ mod tests {
             };
             run_with(&state, "test", false, None, || {}).await.unwrap();
             let task = state.tasks().unwrap().remove(0);
+            let recorded: Vec<Value> = {
+                let db = state.lock().unwrap();
+                let mut query = db
+                    .prepare("SELECT message FROM task_events WHERE task_id='test' ORDER BY id")
+                    .unwrap();
+                let rows = query.query_map([], |r| r.get::<_, String>(0)).unwrap();
+                rows.filter_map(|r| serde_json::from_str(&r.unwrap()).ok())
+                    .collect()
+            };
+            assert!(recorded.iter().any(|e| e["kind"] == "request"));
+            assert!(recorded
+                .iter()
+                .any(|e| e["kind"] == "tool_input"
+                    && e["detail"].as_str().unwrap().contains("plan.md")));
+            assert!(recorded.iter().any(|e| e["kind"] == "tool_result"));
             assert_eq!(task.status, "paused");
             assert!(task.waiting_approval);
             assert_eq!(

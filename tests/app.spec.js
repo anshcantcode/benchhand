@@ -1,6 +1,54 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
+test("signed-in CLI models connect without copying credentials and remain editable", async ({ page }) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
+  await expect(page.locator(".client-row").first()).toContainText("Installed");
+  await page.getByRole("button", { name: "Connect Claude Code", exact: true }).click();
+  await expect(page.locator("dialog [name=secret]")).toHaveCount(0);
+  await page.locator("dialog [name=model]").fill("sonnet");
+  await page.getByRole("button", { name: "Check installation & connect" }).click();
+  await expect(page.locator(".model-connection").filter({ hasText: "Claude Code" })).toContainText("sonnet");
+  const saved = await page.evaluate(() => window.fixtureState.connections.find((c) => c.config.cli === "claude"));
+  expect(saved.config.protocol).toBe("cli");
+  expect(saved.config.toolMode).toBe("structured");
+  expect(saved.config.executable).toBe("");
+  await page.locator(".model-connection").filter({ hasText: "Claude Code" }).getByRole("button", { name: "Manage" }).click();
+  await expect(page.locator("dialog [name=cli]")).toHaveValue("claude");
+  await expect(page.locator("dialog [name=model]")).toHaveValue("sonnet");
+});
+
+test("activity exposes tool evidence safely and keeps expanded inputs during refresh", async ({ page }) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    const now = Math.floor(Date.now() / 1000);
+    window.fixtureState.tasks[0].status = "running";
+    window.fixtureEvents = [
+      {kind:"reasoning_summary",title:"Provider reasoning",detail:"Compare the available files first."},
+      {kind:"tool_input",title:"Read workspace file",detail:'{"path":"<img src=x onerror=alert(1)>"}'},
+      {kind:"tool_result",title:"Read workspace file",detail:'{"text":"report"}'},
+      {kind:"model_output",title:"Model output",detail:"Here is the report."}
+    ].map((event, i) => ({ id:String(i), message:JSON.stringify(event), createdAt:now+i }));
+  });
+  await page.evaluate(() => refresh());
+  await page.locator("nav").getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.locator(".task-row").first().click();
+  await expect(page.locator(".activity-transcript")).toContainText("Compare the available files first.");
+  await expect(page.locator(".activity-transcript img")).toHaveCount(0);
+  await page.getByText("Inspect exact inputs", {exact:true}).click();
+  await page.bringToFront();
+  const before = await page.evaluate(() => window.commandCalls.filter((c) => c.command === "bootstrap").length);
+  await expect.poll(() => page.evaluate(() => window.commandCalls.filter((c) => c.command === "bootstrap").length)).toBeGreaterThan(before);
+  await expect(page.locator('.trace-tool_input details')).toHaveAttribute("open", "");
+  await page.getByRole("tab", { name:"Tools", exact:true }).click();
+  await expect(page.locator(".trace-event")).toHaveCount(2);
+  await expect(page.locator(".trace-reasoning_summary")).toHaveCount(0);
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name:"Export transcript" }).click();
+  expect((await downloaded).suggestedFilename()).toMatch(/^benchhand-activity-/);
+});
+
 test("plugin review renders publisher text without interpreting HTML", async ({
   page,
 }) => {
@@ -403,6 +451,9 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
                 result = c;
                 break;
               }
+              case "detect_model_clients":
+                result = [{provider:"claude",installed:true,version:"Claude Code test"},{provider:"codex",installed:true,version:"Codex CLI test"},{provider:"gemini",installed:false,error:"Not found"}];
+                break;
               case "test_connection":
                 result = state.connections.find(
                   (c) => c.id === args.connectionId,
@@ -819,7 +870,7 @@ test("premium layouts have no horizontal overflow at desktop and small windows",
       "Overview",
       "Teammates",
       "Connections",
-      "Model library",
+      "Models",
       "Marketplace",
     ]) {
       await page.locator("nav").getByRole("button", { name }).click();
@@ -840,7 +891,7 @@ test("model library downloads, reports progress, cancels, and connects installed
   await nativeFixture(page);
   await page
     .locator("nav")
-    .getByRole("button", { name: "Model library" })
+    .getByRole("button", { name: "Models" })
     .click();
   await expect(page.locator(".catalog-card h3")).toHaveText("qwen3:8b");
   await page
@@ -980,7 +1031,7 @@ test("capture the implemented desktop experience", async ({ page }) => {
   await page.getByRole("button", { name: "Explore first" }).click();
   await page
     .locator("nav")
-    .getByRole("button", { name: "Model library" })
+    .getByRole("button", { name: "Models" })
     .click();
   await expect(page.locator(".catalog-card h3")).toHaveText("qwen3:8b");
   await page.screenshot({

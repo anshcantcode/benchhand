@@ -6,7 +6,7 @@ How to set up Benchhand, connect your accounts and tools, and what to expect fro
 
 1. Install the package for your OS. On Windows the app uses WebView2; the installer can provision the runtime. On Linux use a desktop session with WebKitGTK 4.1 and a working Secret Service keyring.
 2. Complete guided setup, or choose **Explore first** and connect services later.
-3. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Model library** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Connections** and supply the provider’s API base URL and key.
+3. For an existing signed-in Claude Code, Codex CLI or Gemini CLI, connect it in **Models**. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Models** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Models → Connect cloud API** and supply the provider’s API base URL and key.
 4. Choose **Discover**, select a model, and verify the connection. The first model is assigned to teammates that do not already have one.
 5. Give a teammate a task. Its page shows each step of the run, a details panel and the full activity log. Results can be copied or exported as Markdown.
 6. Decide in **Approvals**. Each action is shown as it will appear (a Slack message, a GitHub issue, a click or keystroke), with the exact inputs one click away. Choose **Edit** to change values before approving. The edited inputs are what runs, and the teammate is told what changed.
@@ -46,6 +46,8 @@ The [Android app](../mobile/android/README.md) lets you approve or reject waitin
 3. In the Android app, scan the QR code or paste the code.
 
 The computer answers only devices on your Tailscale network (and itself), on port 47615. The phone holds a random key; the computer stores only its hash. Choose **Pair a new phone** to replace the key, or **Turn off phone access** to stop answering. The phone checks for new approvals about every 15 minutes, so a notification can arrive up to that long after an action starts waiting. The computer must be on, awake and running Benchhand.
+
+For signed-in CLI setup, provider reasoning, activity filters and transcript exports, see [Models and live activity](MODELS_AND_ACTIVITY.md).
 
 ## Where your data lives
 
