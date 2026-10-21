@@ -262,7 +262,7 @@ try {
     .fill("Check the native task and approval workflow");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(
-    page.getByText("Run an imported tool", { exact: true }),
+    page.getByRole("heading", { name: "Run an imported tool", exact: true }),
   ).toBeVisible({ timeout: 15000 });
   await expect(page.locator(".approval-payload")).toContainText(
     "Exactly this approved action.",
