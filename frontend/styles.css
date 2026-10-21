@@ -3108,3 +3108,35 @@ dialog[open] {
     align-items: stretch;
   }
 }
+
+/* Phone pairing: the code sits on its own white patch so any phone camera reads it in either theme. */
+.phone-pairing {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 16px;
+}
+.phone-qr {
+  width: 200px;
+  padding: 8px;
+  background: #ffffff;
+  border-radius: var(--radius);
+}
+.phone-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.phone-pairing p {
+  margin: 0 0 10px;
+}
+.phone-pairing input {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .phone-pairing {
+    grid-template-columns: 1fr;
+  }
+}

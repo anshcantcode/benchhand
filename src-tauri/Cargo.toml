@@ -30,6 +30,8 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri = { version = "2", features = ["tray-icon"] }
 uuid = { version = "1", features = ["v4"] }
+tiny_http = "0.12"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [features]
 default = ["custom-protocol"]

@@ -9,7 +9,9 @@ let marketSource = "featured",
   pluginPlan = null,
   pluginInitialValues = {},
   computerImage = null,
-  desktopStatus = null;
+  desktopStatus = null,
+  remoteStatus = null,
+  remotePairing = null;
 const emptyState = (title, body, ic) => empty(ic, title, body);
 const localTime = (ts) =>
   ts ? new Date(ts * 1000).toLocaleString() : "No next run";
@@ -187,6 +189,27 @@ function computerView() {
 function advancedSettings() {
   return `<section class="setting-row advanced-preferences"><div class="setting-label"><h2>Runs and background work</h2><p>How many tasks run at once, how far delegation may go, and whether work continues with the window closed.</p></div><div class="setting-panel"><div class="form-grid"><label class="field"><span>Tasks at once</span><input type="number" data-pref="maxConcurrentRuns" min="1" max="8" value="${data.settings.maxConcurrentRuns || 3}"></label><label class="field"><span>Shared turn budget</span><input type="number" data-pref="rootStepBudget" min="1" max="300" value="${data.settings.rootStepBudget || 60}"></label></div><p class="helper">A task and everything it delegates share one turn budget. Delegation goes three levels deep and up to 32 child tasks; loops back to an ancestor are blocked.</p><label class="toggle-field"><input type="checkbox" data-pref="runInBackground" ${data.settings.runInBackground ? "checked" : ""}><span>Keep working in the tray when the window closes</span></label><label class="toggle-field"><input id="autostart-toggle" type="checkbox" ${desktopStatus?.enabled ? "checked" : ""} ${!desktopStatus ? "disabled" : ""}><span>Open Benchhand when I sign in</span></label><p class="helper">${desktopStatus?.desktop?.tray === false ? "No tray is available on this desktop. Closing the window quits Benchhand." : "Quit from the tray to stop background work. Routines do not wake a sleeping computer."}</p></div></section>`;
 }
+function phoneSettings() {
+  const r = remoteStatus,
+    on = r?.enabled,
+    pairing = remotePairing
+      ? `<div class="phone-pairing"><div class="phone-qr" aria-label="Pairing code for the Benchhand app">${remotePairing.qr}</div><div><p><strong>Scan this with the Benchhand app.</strong> Your phone needs Tailscale, signed in to the same account as this computer.</p><p class="helper">The code works once and replaces any phone paired before. It stays on screen until you leave Preferences.</p><label class="field"><span>Or paste this code in the app</span><input id="phone-code" readonly value="${esc(remotePairing.code)}"></label>${button("phone-copy", "Copy code", "", "", "button secondary small")}</div></div>`
+      : "";
+  const status = !r
+    ? `<p class="helper">Checking phone access…</p>`
+    : on
+      ? `<p>Paired ${esc(localTime(r.pairedAt))}. ${r.lastSeen ? `Last heard from the phone ${esc(localTime(r.lastSeen))}.` : "The phone hasn't connected yet."}</p><p class="helper">Reachable at ${esc(r.address || "no Tailscale address")}, port ${r.port}, from your Tailscale network only.${r.running ? "" : " Phone access isn't running; pair again to restart it."}</p>`
+      : `<p>Approve actions, start tasks and run routines from the Benchhand Android app while you're away.</p><p class="helper">Off until you pair a phone. It works over Tailscale, so nothing is opened to the internet.</p>`;
+  return `<section class="setting-row phone-access"><div class="setting-label"><h2>Phone</h2><p>Control this computer from the Benchhand app. Every action still needs your approval.</p></div><div class="setting-panel">${status}${pairing}<div class="button-row spaced">${button("phone-pair", on ? "Pair a new phone" : "Pair a phone", "key", "", "button secondary")}${on ? button("phone-off", "Turn off phone access", "stop", "", "button danger") : ""}</div></div></section>`;
+}
+async function loadRemoteStatus() {
+  try {
+    remoteStatus = await invoke("remote_status");
+  } catch {
+    remoteStatus = { enabled: false };
+  }
+  if (page === "settings") render();
+}
 function delegationDetail(t) {
   const children = data.tasks.filter((c) => c.parentId === t.id),
     parent = data.tasks.find((p) => p.id === t.parentId);
@@ -194,6 +217,10 @@ function delegationDetail(t) {
 }
 async function featureNavigate(next) {
   if (next === "extensions" && !marketLoaded) await loadMarketplace();
+  if (next === "settings") {
+    remotePairing = null;
+    loadRemoteStatus();
+  }
   if (["settings", "computer", "schedules"].includes(next) && !desktopStatus) {
     try {
       desktopStatus = await invoke("autostart_status");
@@ -208,6 +235,34 @@ async function featureAction(el) {
     case "import-extension":
       pluginImport();
       return true;
+    case "phone-pair":
+      busy(el, true, "Making a code…");
+      try {
+        remotePairing = await invoke("remote_pair");
+        remoteStatus = await invoke("remote_status");
+        render();
+      } catch (e) {
+        busy(el, false);
+        notify(e, true);
+      }
+      return true;
+    case "phone-off":
+      await invoke("remote_disable");
+      remotePairing = null;
+      remoteStatus = await invoke("remote_status");
+      render();
+      notify("Phone access is off. The paired phone can no longer connect.");
+      return true;
+    case "phone-copy": {
+      const input = document.getElementById("phone-code");
+      try {
+        await navigator.clipboard.writeText(input.value);
+        notify("Pairing code copied.");
+      } catch {
+        input.select();
+      }
+      return true;
+    }
     case "market-tab":
       marketTab = id;
       render();

@@ -822,7 +822,7 @@ function render() {
   if (!setupOpen && page === "settings")
     root
       .querySelector(".settings")
-      .insertAdjacentHTML("beforeend", advancedSettings());
+      .insertAdjacentHTML("beforeend", advancedSettings() + phoneSettings());
   colors(root);
   if (selector) {
     const replacement = root.querySelector(selector);

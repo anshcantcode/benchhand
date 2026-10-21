@@ -5,6 +5,7 @@ mod desktop;
 mod marketplace;
 mod models;
 mod orchestration;
+mod remote;
 mod services;
 mod stdio;
 #[cfg(test)]
@@ -874,6 +875,9 @@ fn main() {
             computer::reset(&app.state::<AppState>()).map_err(std::io::Error::other)?;
             desktop::setup(app)?;
             orchestration::start(app.handle().clone());
+            if let Err(e) = remote::start(app.handle()) {
+                eprintln!("Phone access could not start: {e}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -912,13 +916,17 @@ fn main() {
             orchestration::run_schedule_now,
             models::local_models,
             models::download_model,
-            models::cancel_download
+            models::cancel_download,
+            remote::remote_status,
+            remote::remote_pair,
+            remote::remote_disable
         ])
         .build(tauri::generate_context!())
         .expect("Benchhand could not start")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 desktop::stop(app);
+                remote::stop();
                 if let Ok(active) = app.state::<AppState>().active.lock() {
                     for h in active.values() {
                         h.abort();

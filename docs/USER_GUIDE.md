@@ -37,6 +37,16 @@ Create a routine in **Routines** with a teammate, task context, timing, time zon
 
 Teammates can use **team_directory** and **delegate_task** during ordinary tasks. Each child uses its own model and private workspace; its parent must pass the necessary context. Results and failures return automatically. The task detail page shows parent and child links. Canceling a parent cancels active descendants. The shared turn budget, concurrent run limit, three-level depth limit, and 32-child limit keep work bounded.
 
+### Phone access
+
+The Android app lets you approve or reject waiting actions, give a teammate a task, and run routines while you are away from the computer. Phone access is off until you pair a phone.
+
+1. Install [Tailscale](https://tailscale.com/download) on the computer and the phone, and sign in to the same account on both.
+2. On the computer, open **Preferences → Phone** and choose **Pair a phone**. A QR code and a pairing code appear.
+3. In the Android app, scan the QR code or paste the code.
+
+The computer answers only devices on your Tailscale network (and itself), on port 47615. The phone holds a random key; the computer stores only its hash. Choose **Pair a new phone** to replace the key, or **Turn off phone access** to stop answering. The phone checks for new approvals about every 15 minutes, so a notification can arrive up to that long after an action starts waiting. The computer must be on, awake and running Benchhand.
+
 ## Where your data lives
 
 The default location is the OS application data directory for `dev.localteam.teammate`. To choose a different local workspace, set `TEAMMATE_DATA_DIR` to an absolute directory before launching. This changes the database and file workspace location; credentials remain in the OS credential store.
