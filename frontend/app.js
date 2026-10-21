@@ -33,6 +33,7 @@ const paths = {
   refresh: "M20 7V2l-3 3a9 9 0 1 0 3 11M20 2h-5",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
   external: "M14 3h7v7m0-7L10 14M10 3H3v18h18v-7",
+  folders: "M3 7h7l2-3h9v17H3V7ZM3 10h18",
   file: "M14 2H5v20h14V7l-5-5Zm0 0v6h5M8 13h8M8 17h6",
   info: "M12 11v6M12 7h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
   back: "M19 12H5m6-6-6 6 6 6",
@@ -90,7 +91,7 @@ let data = {
   installedModels = [],
   libraryLoaded = false,
   libraryError = "";
-let modelClients = [], clientScan = "idle", clientError = "", activityFilter = "all";
+let modelClients = [], clientScan = "idle", clientError = "", activityFilter = "all", moreTools = localStorage.getItem("benchhand-more-tools") === "1";
 const clientNames = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI" };
 const defaultAccent = "#54c2a4",
   legacyAccent = "#b4a0ff";
@@ -112,11 +113,12 @@ const pages = {
   extensions: "Marketplace",
   schedules: "Routines",
   computer: "Computer",
+  folders: "Folders",
   settings: "Preferences",
 };
 const navGroups = [
-  ["home", "tasks", "approvals", "schedules"],
-  ["team", "models", "connections", "extensions", "computer"],
+  ["home", "tasks", "models", "folders"],
+  ["team", "approvals", "schedules", "connections", "extensions", "computer"],
 ];
 const providers = {
   ollama: {
@@ -264,7 +266,7 @@ function sidebar() {
     models = data.connections.filter((c) => c.kind === "model").length,
     navItem = (id) =>
       `<button class="nav-item ${page === id ? "active" : ""}" data-action="navigate" data-page="${id}" aria-label="${pages[id]}" title="${pages[id]}" ${page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${pages[id]}</span>${id === "approvals" && pending().length ? `<b class="nav-count">${pending().length}</b>` : ""}</button>`;
-  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home" aria-label="Benchhand overview">${brandMark()}<span>Benchhand</span></button><button class="workspace-button" data-action="navigate" data-page="settings" title="Workspace preferences"><strong>${esc(data.settings.workspaceName || "My workspace")}</strong><small>${esc(data.device.os === "windows" ? "This PC" : "This computer")} · local</small></button><nav aria-label="Main navigation">${navGroups.map((g) => `<div class="nav-group">${g.map(navItem).join("")}</div>`).join("")}</nav><div class="sidebar-spacer"></div><div class="local-status" title="${plural(models, "model connection")}"><i class="status-dot ${running ? "live" : ""}"></i><span>${running ? `${plural(running, "task")} running` : "Idle"}<small>${plural(models, "model")} connected</small></span></div>${navItem("settings")}<div class="sidebar-footer"><span class="profile-initial" aria-hidden="true">${esc((data.settings.ownerName || "Y")[0].toUpperCase())}</span><span>${esc(data.settings.ownerName || "You")}<small>Benchhand ${esc(data.device.version || "0.3.0")}</small></span></div></aside>`;
+  return `<aside class="sidebar"><button class="brand" data-action="navigate" data-page="home" aria-label="Benchhand overview">${brandMark()}<span>Benchhand</span></button><button class="workspace-button" data-action="navigate" data-page="settings" title="Workspace preferences"><strong>${esc(data.settings.workspaceName || "My workspace")}</strong><small>${esc(data.device.os === "windows" ? "This PC" : "This computer")} · local</small></button><nav aria-label="Main navigation">${`<div class="nav-group">${navGroups[0].map(navItem).join("")}</div><button class="nav-item more-tools" aria-label="More tools" data-action="more-tools" aria-expanded="${moreTools || navGroups[1].includes(page)}">${icon("extensions")}<span>More tools</span>${icon("chevron")}</button>${moreTools || navGroups[1].includes(page) ? `<div class="nav-group advanced-nav">${navGroups[1].map(navItem).join("")}</div>` : ""}`}</nav><div class="sidebar-spacer"></div><div class="local-status" title="${plural(models, "model connection")}"><i class="status-dot ${running ? "live" : ""}"></i><span>${running ? `${plural(running, "task")} running` : "Idle"}<small>${plural(models, "model")} connected</small></span></div>${navItem("settings")}<div class="sidebar-footer"><span class="profile-initial" aria-hidden="true">${esc((data.settings.ownerName || "Y")[0].toUpperCase())}</span><span>${esc(data.settings.ownerName || "You")}<small>Benchhand ${esc(data.device.version || "0.3.0")}</small></span></div></aside>`;
 }
 function topbar() {
   return `<div class="topbar"><div class="breadcrumbs"><span>${esc(data.settings.workspaceName)}</span><span class="crumb-sep">/</span><strong>${pages[page]}</strong></div><div class="topbar-right"><button class="search-trigger" data-action="command">${icon("search")}<span>Jump to anything</span><kbd>Ctrl K</kbd></button><button class="icon-button" title="Review approvals" aria-label="Review approvals" data-action="navigate" data-page="approvals">${icon("approvals")}${pending().length ? '<span class="notification-dot"></span>' : ""}</button></div></div>`;
@@ -402,6 +404,7 @@ function overviewLine() {
   return parts.filter(Boolean).join(" · ");
 }
 function homeView() {
+  if (!data.tasks.some((t) => t.status === "completed")) return firstRunHome();
   const hasModel = data.connections.some((c) => c.kind === "model"),
     starters = [
       ["github", "Triage my GitHub issues"],
@@ -413,6 +416,19 @@ function homeView() {
       ? `<div class="starters">${starters.map(([id, label]) => `<button class="starter" data-action="starter" data-template="${id}">${label}</button>`).join("")}</div>`
       : ""
   }${button(hasModel ? "submit-home" : "connect-model", hasModel ? "Start task" : "Connect a model", hasModel ? "arrow" : "model", "", "button primary")}</div></section><div class="grid two-one">${teamLanes()}${waitingPanel()}</div><div class="grid two-one"><section class="panel">${section("Recent tasks", `${data.tasks.filter((t) => t.status === "completed").length} completed`, link("tasks", "All tasks"))}${data.tasks.length ? `<div class="task-list">${taskHeader()}${taskRows(data.tasks.slice(0, 6), true)}</div>` : `<p class="panel-empty">No tasks yet. Write one above and choose who takes it.</p>`}</section><div class="stack">${routinesPanel()}${modelsPanel()}</div></div>${data.settings.showActivity ? `<p class="workspace-note">${icon("key")}<span>Tasks, results and history are stored on this computer. Keys live in your OS credential store.</span></p>` : ""}`;
+}
+function firstRunHome() {
+  const model = data.connections.find((c) => c.kind === "model");
+  const bot = data.bots.find((b) => b.providerId) || data.bots[0];
+  if (bot && !composerBot) composerBot = bot.id;
+  return `${heading(model ? "Try your first task" : "Start with a model", model ? `${esc(model.label)} is connected. Give your assistant a small job and watch it work.` : "Use a tool you already have, then give your assistant a job.", button("setup", "Personalize workspace", "settings", "", "button quiet"))}<div class="first-run-layout"><section class="panel first-run-primary">${model ? `${section("What would you like help with?")}<div class="first-task-folder"><span>${(data.folders || []).some((f) => f.botId === bot?.id) ? "Your assistant has a working folder connected." : "Working with your own files?"}</span><button class="text-button" data-action="navigate" data-page="folders">${(data.folders || []).some((f) => f.botId === bot?.id) ? "Manage folder" : "Add a folder (optional)"} ${icon("arrow")}</button></div><div class="first-task-example"><strong>Not sure where to start?</strong><p>Run a quick introduction. Your assistant will suggest useful first tasks without using any tools.</p><button class="button primary" data-action="first-task">${icon("play")} Try a simple task</button></div><div class="first-task-composer"><label class="field"><span>Or write your own task</span><textarea id="home-prompt" rows="3" aria-label="Task goal" placeholder="Help me plan a project, explain something, or work through an idea.">${esc(composerDraft)}</textarea></label><details><summary>Choose a teammate</summary><label class="field"><span>Assign to</span><select id="home-bot" aria-label="Assign to teammate">${data.bots.map((b) => `<option value="${esc(b.id)}" ${b.id === composerBot ? "selected" : ""}>${esc(b.name)} · ${esc(modelName(b))}</option>`).join("")}</select></label></details><button class="button secondary" data-action="submit-home">${icon("arrow")} Start task</button></div>` : `${section("Which tool do you already use?")}<p class="first-run-copy">Choose one. Benchhand uses its existing sign-in, so you don't need to find an API key.</p><div class="first-run-clients">${Object.entries(clientNames).map(([id, name]) => `<button class="first-run-choice" aria-label="Use ${name}" data-action="connect-cli" data-provider="${id}">${icon("terminal")}<span><strong>Use ${name}</strong><small>Use its existing sign-in on this computer</small></span>${icon("arrow")}</button>`).join("")}</div><details class="first-run-other"><summary>Use a local model or an API key instead</summary><div class="model-shortcuts"><button class="button secondary" data-action="connect-model" data-preset="ollama">Connect Ollama or LM Studio</button><button class="button secondary" data-action="connect-model" data-preset="openai">Connect a cloud API</button></div></details>`}</section><aside class="first-run-guide"><h2>How Benchhand works</h2><ol><li><strong>Choose your model</strong><p>Your existing signed-in tool, a local model, or a cloud provider.</p></li><li><strong>Give it one clear task</strong><p>Start small. You can add files, connected apps and more teammates later.</p></li><li><strong>Watch the work</strong><p>Open the task to see model output, tool requests and results. External writes wait for approval.</p></li></ol><p class="subtle">You can change the model, layout and preferences at any time.</p></aside></div>`;
+}
+function foldersView() {
+  const folders = data.folders || [];
+  return `${heading("Folders", "Work on projects and files already on this computer.", button("folder-connect", "Add a folder", "plus"))}<section class="panel">${section("Working folders", folders.length ? plural(folders.length, "connected folder") : "Choose a folder to get started")}${folders.length ? `<div class="folder-list">${folders.map((f) => { const bot = data.bots.find((b) => b.id === f.botId); return `<article class="folder-row">${icon("folders")}<div><h3>${esc(f.path.split(/[\\/]/).filter(Boolean).at(-1) || f.path)}</h3><p>${esc(f.path)}</p><small>${esc(bot?.name || "Assistant")} · reads allowed · changes need approval</small></div><div class="row-actions"><button class="button secondary small" data-action="folder-task" data-id="${esc(f.botId)}">Start a task here</button><button class="button quiet small" data-action="folder-detach" data-id="${esc(f.botId)}">Disconnect</button></div></article>`; }).join("")}</div>` : `<div class="folder-empty"><p>Connect a project, notes folder, or document workspace. Your assistant can read text files inside it and propose changes for you to review.</p><button class="button secondary" data-action="folder-connect">${icon("folders")} Choose a folder</button></div>`}</section><section class="folder-explanation"><h2>Your files stay where they are</h2><p>One working folder per teammate. File tools use paths inside that folder; links leading outside it are rejected. Changes to attached folders wait for your approval. Disconnecting does not delete or move files.</p><p>File contents needed for a task go to the model you select. Use a local model if those contents must remain on this computer.</p></section>`;
+}
+function folderForm() {
+  openSheet(`${dialogHeading("Add a working folder", "Choose an existing folder. Your assistant can read it and propose file changes.")}<form id="folder-form"><div class="sheet-body"><label class="field"><span>Assistant</span><select name="botId">${data.bots.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} · ${esc(b.role)}</option>`).join("")}</select></label><button type="button" class="button primary" data-action="folder-pick">${icon("folders")} Choose folder on this computer</button><p class="helper spaced">Every file change asks for approval. Stop this assistant’s running tasks before changing its working folder.</p><details class="cli-advanced"><summary>Enter a folder path instead</summary><label class="field"><span>Existing folder path</span><input name="path" placeholder="${data.device.os === "windows" ? "C:\\Users\\you\\Documents\\My project" : "/home/you/projects/my-project"}"></label><button type="submit" class="button secondary">Connect this path</button></details><div class="form-error" role="alert" hidden></div></div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button></div></form>`);
 }
 function filteredTasks() {
   const list = data.tasks.filter(
@@ -548,7 +564,7 @@ function taskDetail() {
       : t.status === "running"
         ? `<div class="working-state"><p><i class="status-dot live"></i><strong>${esc(t.botName)} is working</strong></p><p class="subtle">${esc(events.length ? activityEvent(events.at(-1)).title : "Starting the task")}</p></div>`
         : `<div class="task-brief"><p class="subtle">${t.status === "queued" ? "This is a draft. Run it when the brief is ready." : "No result yet. Run the task again to produce one."}</p></div>`;
-  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="page-heading task-heading"><div><h1>${esc(t.title)}</h1><p>${pill(t)}<span>${avatar(b, true)} ${esc(t.botName)}</span><span>Started ${relative(t.createdAt)}</span></p>${t.description ? `<p class="task-description">${esc(t.description)}</p>` : ""}</div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}<div class="task-layout"><div class="task-main">${a ? approvalCard(a) : ""}${activityPanel(t)}${delegationDetail(t)}<section class="panel result-panel">${section("Result", "", t.output ? `<button class="icon-button" title="Copy result" aria-label="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" aria-label="Export Markdown" data-action="export-result">${icon("download")}</button>` : "")}${result}</section></div><aside class="task-rail">${stepsPanel(t)}<section class="panel">${section("Details")}<dl class="detail-list">${detail("Teammate", `<span class="detail-bot">${avatar(b, true)}<span><strong>${esc(t.botName)}</strong>${b?.role ? `<small>${esc(b.role)}</small>` : ""}</span></span>`)}${detail("Model", esc(modelName(b)))}${detail("Created", `<time class="num">${stamp(t.createdAt)}</time>`)}${detail("Updated", `<time class="num">${relative(t.updatedAt || t.createdAt)}</time>`)}${routine ? detail("Routine", esc(routine.name)) : ""}</dl></section></aside></div>`;
+  return `<button class="text-button back-button" data-action="task-back">${icon("back")} All tasks</button><header class="page-heading task-heading"><div><h1>${esc(t.title)}</h1><p>${pill(t)}<span>${avatar(b, true)} ${esc(t.botName)}</span><span>Started ${relative(t.createdAt)}</span></p>${t.description ? `<p class="task-description">${esc(t.description)}</p>` : ""}</div><div class="heading-actions">${["running", "queued", "paused"].includes(t.status) ? button("cancel-task", "Cancel", "stop", `data-id="${esc(t.id)}"`, "button secondary") : ""}${!t.waitingApproval && !t.waitingChild && t.status !== "running" ? button("run-task", t.status === "queued" ? "Run task" : "Run again", "play", `data-id="${esc(t.id)}"`) : ""}</div></header>${t.error ? `<div class="callout error">${icon("info")}<span>${esc(t.error)}</span></div>` : ""}<div class="task-layout"><div class="task-main">${a ? approvalCard(a) : ""}${activityPanel(t)}${delegationDetail(t)}<section class="panel result-panel">${section("Result", "", t.output ? `<button class="icon-button" title="Copy result" aria-label="Copy result" data-action="copy-result">${icon("copy")}</button><button class="icon-button" title="Export Markdown" aria-label="Export Markdown" data-action="export-result">${icon("download")}</button>` : "")}${result}</section></div><aside class="task-rail">${stepsPanel(t)}<section class="panel">${section("Details")}<dl class="detail-list">${detail("Teammate", `<span class="detail-bot">${avatar(b, true)}<span><strong>${esc(t.botName)}</strong>${b?.role ? `<small>${esc(b.role)}</small>` : ""}</span></span>`)}${detail("Model", esc(modelName(b)))}${t.workingFolder ? detail("Working folder", esc(t.workingFolder)) : ""}${detail("Created", `<time class="num">${stamp(t.createdAt)}</time>`)}${detail("Updated", `<time class="num">${relative(t.updatedAt || t.createdAt)}</time>`)}${routine ? detail("Routine", esc(routine.name)) : ""}</dl></section></aside></div>`;
 }
 function teamView() {
   return `${heading("Teammates", `${plural(data.bots.length, "teammate")} · each with its own model, instructions and private workspace`, button("edit-bot", "New teammate"))}<section class="panel"><div class="list-header team-header" aria-hidden="true"><span>Teammate</span><span>Model</span><span>Now</span><span class="num">Tasks</span></div>${data.bots.map(teammateCard).join("") || empty("team", "No teammates yet", "Create one and give it a role and a model.")}</section><p class="workspace-note">${icon("model")}<span>Every teammate can use the connected tools. Its model and instructions decide how it works.</span></p>`;
@@ -654,6 +670,7 @@ function approvalPreview(a) {
     return `<div class="action-preview"><dl class="preview-fields">${field("Channel", `<code>${esc(argText(x.channel))}</code>`)}</dl><p class="preview-message">${esc(argText(x.text))}</p></div>`;
   if (/^github_create_issue/.test(tool))
     return `<div class="action-preview"><dl class="preview-fields">${field("Repository", `<code>${esc(argText(x.repository))}</code>`)}${field("Title", `<strong>${esc(argText(x.title))}</strong>`)}</dl><article class="markdown preview-message">${markdown(argText(x.body))}</article></div>`;
+  if (tool === "workspace_write") return `<div class="action-preview"><dl class="preview-fields">${field("Folder", esc(a.target))}${field("File", `<code>${esc(argText(x.path))}</code>`)}</dl><strong>Proposed file content</strong><pre class="file-change-preview">${esc(argText(x.content))}</pre></div>`;
   if (tool.startsWith("computer_"))
     return `<div class="action-preview"><p class="preview-sentence">${esc(computerSentence(tool, x))}</p><p class="helper">Positions run from 0 to 1000 across the display.</p></div>`;
   const entries = Object.entries(x);
@@ -791,6 +808,7 @@ function setupView() {
   return `<div class="setup-layout"><aside class="setup-side"><div class="brand">${brandMark()}<span>Benchhand</span></div><ol class="setup-steps">${names.map((n, i) => `<li class="${i === setupStep ? "current" : i < setupStep ? "complete" : ""}" ${i === setupStep ? 'aria-current="step"' : ""}><span>${n}</span>${i < setupStep ? icon("check") : ""}</li>`).join("")}</ol><dl class="setup-summary"><div><dt>Teammates</dt><dd>${data.bots.map((b) => esc(b.name)).join(", ") || "None yet"}</dd></div><div><dt>Models</dt><dd>${models.map((c) => esc(c.config.model)).join(", ") || "None yet"}</dd></div><div><dt>Stored</dt><dd>On this computer</dd></div></dl></aside><main class="setup-main"><div class="setup-top"><span class="subtle">Step ${setupStep + 1} of 4</span><button class="text-button" data-action="setup-skip">Explore first ${icon("arrow")}</button></div><div class="setup-content">${content}</div><footer class="setup-bottom">${setupStep ? '<button class="button quiet" data-action="setup-back">Back</button>' : "<span></span>"}<button class="button primary" data-action="setup-next">${setupStep === 3 ? "Open my workspace" : "Continue"}${icon("arrow")}</button></footer></main></div>`;
 }
 function render() {
+  const firstTaskOptionsOpen = root.querySelector(".first-task-composer details")?.open;
   const transcript = root.querySelector(".activity-stream");
   const transcriptScroll = transcript?.scrollTop || 0;
   const follow = transcript && transcript.scrollHeight - transcript.clientHeight - transcriptScroll < 40;
@@ -818,6 +836,7 @@ function render() {
           team: teamView,
           connections: connectionsView,
           models: modelsView,
+          folders: foldersView,
           extensions: marketplaceView,
           schedules: schedulesView,
           computer: computerView,
@@ -831,6 +850,7 @@ function render() {
       .insertAdjacentHTML("beforeend", advancedSettings() + phoneSettings());
   colors(root);
   for (const id of expanded) root.querySelector(`[data-trace-id="${CSS.escape(id)}"] details`)?.setAttribute("open", "");
+  if (firstTaskOptionsOpen) root.querySelector(".first-task-composer details")?.setAttribute("open", "");
   const nextTranscript = root.querySelector(".activity-stream");
   if (nextTranscript) nextTranscript.scrollTop = follow || !transcript ? nextTranscript.scrollHeight : transcriptScroll;
   if (selector) {
@@ -860,7 +880,7 @@ async function refresh() {
     events = await invoke("task_events", { taskId: selectedTask });
   if (!started) {
     page = data.settings.defaultView || "home";
-    setupOpen = !data.settings.setupComplete;
+    setupOpen = false;
     setupStep = Math.min(
       3,
       Number(localStorage.getItem("teammate-setup-step")) || 0,
@@ -1008,7 +1028,7 @@ function connectionInput() {
 function cliConnectionForm(provider = "claude", connection = null) {
   editingConnection = connection;
   const c = connection?.config || {}, name = clientNames[c.cli || provider] || clientNames.claude;
-  openSheet(`${dialogHeading(`Connect ${name}`, "Use the account already signed in on this computer.")}<form id="connection-form" data-kind="model"><div class="sheet-body"><label class="field"><span>Installed tool</span><select name="cli" id="cli-provider">${Object.entries(clientNames).map(([id, title]) => `<option value="${id}" ${id === (c.cli || provider) ? "selected" : ""}>${title}</option>`).join("")}</select></label><input type="hidden" name="protocol" value="cli"><label class="field"><span>Connection name</span><input name="label" required maxlength="80" value="${esc(connection?.label || name)}"></label><label class="field"><span>Model</span><input name="model" value="${esc(c.model || "default")}" required maxlength="200"><small class="helper">Use default for the CLI’s default model, or enter a model ID your account can access.</small></label><details class="cli-advanced"><summary>Executable location</summary><label class="field"><span>Executable or JavaScript entry file</span><input name="executable" value="${esc(c.executable || "")}" placeholder="Automatic · find on PATH"><small class="helper">Optional absolute path. On Windows, use the .exe or installed .js entry, not a .cmd shim.</small></label></details><div class="connection-help"><strong>Your account, your usage limits</strong><p>Install ${esc(name)}, run it in a terminal, and sign in first. Benchhand launches its supported command interface; authentication stays with the CLI. Model availability, subscription eligibility and charges are controlled by the provider.</p><p>Tool requests run through Benchhand’s approval flow. This adapter sends text context; add a vision companion in Preferences to describe screenshots.</p></div><div class="form-error" role="alert" hidden></div>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">Disconnect</button><div class="disconnect-confirm" hidden><p>Remove this model connection?</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">Check installation & connect</button></div></form>`);
+  openSheet(`${dialogHeading(`Connect ${name}`, "Use the account already signed in on this computer.")}<form id="connection-form" data-kind="model"><div class="sheet-body"><input type="hidden" name="protocol" value="cli"><div class="connection-help"><strong>No API key needed</strong><p>If ${esc(name)} is installed and signed in, connect it below. Your provider’s account access and usage limits still apply.</p></div><details class="cli-advanced" ${connection ? "open" : ""}><summary>Model and connection settings</summary><label class="field"><span>Installed tool</span><select name="cli" id="cli-provider">${Object.entries(clientNames).map(([id, title]) => `<option value="${id}" ${id === (c.cli || provider) ? "selected" : ""}>${title}</option>`).join("")}</select></label><label class="field"><span>Connection name</span><input name="label" required maxlength="80" value="${esc(connection?.label || name)}"></label><label class="field"><span>Model</span><input name="model" value="${esc(c.model || "default")}" required maxlength="200"><small class="helper">Leave default to let the CLI choose, or enter a model ID your account can access.</small></label><label class="field"><span>Executable location</span><input name="executable" value="${esc(c.executable || "")}" placeholder="Automatic · find on PATH"><small class="helper">Optional native executable or installed JavaScript entry. Windows command shims are not supported.</small></label></details><details class="cli-advanced"><summary>How this connection works</summary><p class="helper">Sign in with the official CLI first. Benchhand keeps authentication with it and sends text context through its command interface. Tool requests use Benchhand’s approval flow. A vision companion can describe screenshots.</p></details><div class="form-error" role="alert" hidden></div>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">Disconnect</button><div class="disconnect-confirm" hidden><p>Remove this model connection?</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">Check installation & connect</button></div></form>`);
 }
 async function scanModelClients() {
   if (clientScan === "scanning") return;
@@ -1160,6 +1180,29 @@ async function handleAction(el) {
     id = el.dataset.id;
   if (await featureAction(el)) return;
   switch (a) {
+    case "more-tools":
+      moreTools = !moreTools; localStorage.setItem("benchhand-more-tools", moreTools ? "1" : "0"); render();
+      break;
+    case "folder-connect":
+      folderForm();
+      break;
+    case "folder-pick": {
+      const botId = sheet.querySelector("[name=botId]").value;
+      busy(el, true, "Choose a folder…");
+      try { const folder = await invoke("pick_workspace_folder", {botId}); if (folder) { closeSheet(); await refresh(); notify("Folder connected. File changes will ask for approval."); } } finally { busy(el, false); }
+      break;
+    }
+    case "folder-detach":
+      await invoke("detach_workspace_folder", {botId: id}); await refresh(); notify("Folder disconnected. Your files remain in place.");
+      break;
+    case "folder-task":
+      newTask("", "Work in the attached folder. Inspect the relevant files before proposing changes.", id);
+      break;
+    case "first-task":
+      composerDraft = "Introduce yourself in two sentences and suggest three useful first tasks I can try in Benchhand. Say which would need connected tools. Do not use any tools yet.";
+      document.querySelector("#home-prompt").value = composerDraft;
+      document.querySelector('[data-action="submit-home"]').click();
+      break;
     case "scan-model-clients":
       await scanModelClients();
       break;
@@ -1521,6 +1564,11 @@ sheet.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "folder-form") {
+    event.preventDefault(); const v = new FormData(event.target); const submitter = event.submitter; busy(submitter, true);
+    try { await invoke("attach_workspace_folder", {botId:v.get("botId"),path:v.get("path")}); closeSheet(); await refresh(); notify("Folder connected. File changes will ask for approval."); } catch (e) { formError(e); busy(submitter, false); }
+    return;
+  }
   if (event.target.id === "download-form") {
     event.preventDefault();
     const model = new FormData(event.target).get("model");

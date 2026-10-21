@@ -4,6 +4,25 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-21
+
+### Added
+
+- Connect existing local working folders to individual assistants through the native folder picker or a folder path. Relative file tools read and propose edits inside that folder, and each write requires approval. Disconnecting leaves files in place.
+- Tasks record their working folder. Folder connections cannot change while that assistant has active tasks, and file operations reject paths that escape the selected root.
+
+### Changed
+
+- New workspaces start with a familiar model choice and one simple task, with optional personalization. Name, theme and advanced connection choices no longer block the first task.
+- Core navigation is Overview, Tasks, Models and Folders. Other features are available under More tools.
+- CLI connections use sensible defaults; model IDs and executable paths stay in expandable settings. Neutral primary controls and quieter surfaces keep attention on the task.
+
+### Limits
+
+- Working-folder tools handle UTF-8 text files up to 1 MB and list up to 100 entries per directory. Native MCP plugins and computer control have their own permissions; folder path checks are not an OS sandbox for those tools.
+- Relevant folder content is sent to the selected model. Choose local inference for local-only processing.
+
+
 ## [0.4.0] - 2026-10-21
 
 ### Added

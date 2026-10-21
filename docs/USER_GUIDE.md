@@ -5,13 +5,19 @@ How to set up Benchhand, connect your accounts and tools, and what to expect fro
 ## First run
 
 1. Install the package for your OS. On Windows the app uses WebView2; the installer can provision the runtime. On Linux use a desktop session with WebKitGTK 4.1 and a working Secret Service keyring.
-2. Complete guided setup, or choose **Explore first** and connect services later.
+2. Choose the model tool you already use. Personalization is optional; the app opens directly to a short start screen.
 3. For an existing signed-in Claude Code, Codex CLI or Gemini CLI, connect it in **Models**. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Models** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Models → Connect cloud API** and supply the provider’s API base URL and key.
 4. Choose **Discover**, select a model, and verify the connection. The first model is assigned to teammates that do not already have one.
 5. Give a teammate a task. Its page shows each step of the run, a details panel and the full activity log. Results can be copied or exported as Markdown.
 6. Decide in **Approvals**. Each action is shown as it will appear (a Slack message, a GitHub issue, a click or keystroke), with the exact inputs one click away. Choose **Edit** to change values before approving. The edited inputs are what runs, and the teammate is told what changed.
 
 For local models without native function calling, try **Structured actions** in the connection’s tool settings. The model must still be capable of following the JSON action instructions. **Text only** disables tool calling.
+
+### Work with a local folder
+
+Open **Folders → Add a folder**, choose an assistant, then select a project or notes folder in the system picker. A manual path is available too. Use **Start a task here** to give that assistant work in the folder. It can list and read text files, propose new files or edits, and save after you approve each write. File tools use relative paths inside the selected root; paths and links leading outside it are rejected.
+
+One folder is attached per assistant. Stop its running/paused tasks before changing or disconnecting the folder. Disconnecting leaves every file where it is. Tasks record the folder used for their run. Text files are limited to 1 MB and directory lists to 100 entries. This does not grant shell execution or sandbox independent MCP/native tools. Relevant file contents go to the model you choose, including a cloud provider or signed-in cloud CLI when selected.
 
 ### GitHub and Slack
 

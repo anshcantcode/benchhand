@@ -247,6 +247,7 @@ fn workspace_action(root: &Path, action: &str, args: &Value) -> Result<Value, St
 }
 async fn execute(
     state: &AppState,
+    bot_id: &str,
     root: &Path,
     tool: &Tool,
     args: &Value,
@@ -272,6 +273,15 @@ async fn execute(
     } else {
         if tool.action == "team_directory" {
             return Ok(json!(state.bots()?.iter().map(|b|json!({"id":b.id,"name":b.name,"role":b.role,"modelConnected":!b.provider_id.is_empty()})).collect::<Vec<_>>()));
+        }
+        let current = crate::folders::root(state, bot_id)?
+            .unwrap_or_else(|| state.data_dir.join("workspaces").join(bot_id));
+        if fs::canonicalize(&current).map_err(db_error)?
+            != fs::canonicalize(root).map_err(db_error)?
+        {
+            return Err(
+                "The working folder changed. Restart this task before accessing files.".into(),
+            );
         }
         workspace_action(root, &tool.action, args)
     }
@@ -335,7 +345,7 @@ pub async fn run(app: &tauri::AppHandle, id: &str, resume: bool) -> Result<(), S
     let state = app.state::<AppState>();
     run_with(&state, id, resume, Some(app), || emit(app, id)).await
 }
-async fn run_with(
+pub(crate) async fn run_with(
     state: &AppState,
     id: &str,
     resume: bool,
@@ -373,7 +383,15 @@ async fn run_with(
         .map(|t| t.definition.clone())
         .collect::<Vec<_>>();
     definitions.sort_by_key(|v| v["function"]["name"].as_str().unwrap_or("").to_string());
-    let root = state.data_dir.join("workspaces").join(&bot.id);
+    let attached_folder = crate::folders::root(state, &bot.id)?;
+    let root = attached_folder
+        .clone()
+        .unwrap_or_else(|| state.data_dir.join("workspaces").join(&bot.id));
+    if attached_folder.is_some() {
+        if let Some(tool) = tool_map.get_mut("workspace_write") {
+            tool.approval = true;
+        }
+    }
     fs::create_dir_all(&root).map_err(db_error)?;
     let mut run = if resume {
         let saved: String = state
@@ -393,6 +411,23 @@ async fn run_with(
             ..Default::default()
         }
     };
+    if resume
+        && !task.working_folder.is_empty()
+        && task.working_folder != root.display().to_string()
+    {
+        return Err("The working folder changed. Restart this task before accessing files.".into());
+    }
+    state
+        .lock()?
+        .execute(
+            "UPDATE tasks SET working_folder=?2 WHERE id=?1",
+            params![id, root.display().to_string()],
+        )
+        .map_err(db_error)?;
+    if !resume && attached_folder.is_some() {
+        let instructions = run.messages[0]["content"].as_str().unwrap_or("");
+        run.messages[0]["content"] = json!(format!("{instructions}\nThe workspace tools operate inside an existing folder chosen by your user. Read relevant files before proposing edits. Writes to this folder require approval. Use relative paths; you cannot access parent folders or links outside this root."));
+    }
     let max = state.settings()?["maxSteps"].as_u64().unwrap_or(12) as usize;
     loop {
         if state.task(id)?.status != "running" {
@@ -442,14 +477,19 @@ async fn run_with(
                     if tool.action.starts_with("computer_") {
                         crate::computer::validate(&tool.action, &args)?;
                     }
-                    let target = tool
-                        .connection
-                        .as_ref()
-                        .map(|c| c.label.as_str())
-                        .unwrap_or("This computer");
+                    let target = if tool.action == "workspace_write" {
+                        root.display().to_string()
+                    } else {
+                        tool.connection
+                            .as_ref()
+                            .map(|c| c.label.as_str())
+                            .unwrap_or("This computer")
+                            .to_string()
+                    };
                     let title = match tool.action.as_str() {
                         "create_issue" => "Create a GitHub issue",
                         "send_message" => "Send a Slack message",
+                        "workspace_write" => "Change a local file",
                         action if action.starts_with("computer_") => "Control this computer",
                         _ => "Run an imported tool",
                     };
@@ -482,7 +522,7 @@ async fn run_with(
                             None => Err("Native desktop context is unavailable".into()),
                         }
                     } else {
-                        execute(&state, &root, tool, &args).await
+                        execute(&state, &bot.id, &root, tool, &args).await
                     }
                 }
             } else {

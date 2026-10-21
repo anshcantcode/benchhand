@@ -3,6 +3,7 @@ mod agent;
 mod cli_models;
 mod computer;
 mod desktop;
+mod folders;
 mod marketplace;
 mod models;
 mod orchestration;
@@ -61,6 +62,8 @@ pub struct Task {
     parent_id: String,
     waiting_child: String,
     schedule_id: String,
+    #[serde(default)]
+    working_folder: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -214,6 +217,7 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
       CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),title TEXT NOT NULL,target TEXT NOT NULL,summary TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),created_at INTEGER NOT NULL,is_demo INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS task_events(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT NOT NULL REFERENCES tasks(id),message TEXT NOT NULL,created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS workspace_folders(bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE,path TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY,kind TEXT NOT NULL,label TEXT NOT NULL,config TEXT NOT NULL,account TEXT NOT NULL,verified_at INTEGER NOT NULL);").map_err(db_error)?;
     for (table, column, definition) in [
         ("bots", "instructions", "TEXT NOT NULL DEFAULT ''"),
@@ -227,6 +231,7 @@ fn open_database(path: &PathBuf) -> Result<Database, String> {
         ("tasks", "root_id", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "waiting_child", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "schedule_id", "TEXT NOT NULL DEFAULT ''"),
+        ("tasks", "working_folder", "TEXT NOT NULL DEFAULT ''"),
         ("tasks", "auto_start", "INTEGER NOT NULL DEFAULT 0"),
         ("tasks", "generation", "INTEGER NOT NULL DEFAULT 0"),
         ("tasks", "parent_generation", "INTEGER NOT NULL DEFAULT 0"),
@@ -330,7 +335,7 @@ impl AppState {
     }
     fn tasks(&self) -> Result<Vec<Task>, String> {
         let db = self.lock()?;
-        let mut stmt=db.prepare("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id FROM tasks t JOIN bots b ON b.id=t.bot_id ORDER BY t.created_at DESC,t.rowid DESC LIMIT 500").map_err(db_error)?;
+        let mut stmt=db.prepare("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id,t.working_folder FROM tasks t JOIN bots b ON b.id=t.bot_id ORDER BY t.created_at DESC,t.rowid DESC LIMIT 500").map_err(db_error)?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(Task {
@@ -348,13 +353,14 @@ impl AppState {
                     parent_id: r.get(11)?,
                     waiting_child: r.get(12)?,
                     schedule_id: r.get(13)?,
+                    working_folder: r.get(14)?,
                 })
             })
             .map_err(db_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(db_error)
     }
     fn task(&self, id: &str) -> Result<Task, String> {
-        self.lock()?.query_row("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id FROM tasks t JOIN bots b ON b.id=t.bot_id WHERE t.id=?1",[id],|r|Ok(Task{id:r.get(0)?,title:r.get(1)?,description:r.get(2)?,bot_id:r.get(3)?,bot_name:r.get(4)?,status:r.get(5)?,created_at:r.get(6)?,updated_at:r.get(7)?,output:r.get(8)?,error:r.get(9)?,waiting_approval:r.get::<_,i64>(10)?!=0,parent_id:r.get(11)?,waiting_child:r.get(12)?,schedule_id:r.get(13)?})).optional().map_err(db_error)?.ok_or("Task not found".into())
+        self.lock()?.query_row("SELECT t.id,t.title,t.description,t.bot_id,b.name,t.status,t.created_at,t.updated_at,t.output,t.error,t.waiting_approval,t.parent_id,t.waiting_child,t.schedule_id,t.working_folder FROM tasks t JOIN bots b ON b.id=t.bot_id WHERE t.id=?1",[id],|r|Ok(Task{id:r.get(0)?,title:r.get(1)?,description:r.get(2)?,bot_id:r.get(3)?,bot_name:r.get(4)?,status:r.get(5)?,created_at:r.get(6)?,updated_at:r.get(7)?,output:r.get(8)?,error:r.get(9)?,waiting_approval:r.get::<_,i64>(10)?!=0,parent_id:r.get(11)?,waiting_child:r.get(12)?,schedule_id:r.get(13)?,working_folder:r.get(14)?})).optional().map_err(db_error)?.ok_or("Task not found".into())
     }
     fn event(&self, task_id: &str, message: &str) -> Result<(), String> {
         self.lock()?
@@ -415,7 +421,7 @@ fn bootstrap(state: State<'_, AppState>) -> Result<Value, String> {
     drop(stmt);
     drop(db);
     Ok(
-        json!({"settings":state.settings()?,"bots":state.bots()?,"tasks":state.tasks()?,"connections":state.connections()?,"approvals":approvals,"schedules":orchestration::list(&state)?,"plugins":marketplace::installed(&state)?,"pluginSources":marketplace::sources(&state)?,"downloads":state.downloads.lock().map_err(db_error)?.values().cloned().collect::<Vec<_>>(),"device":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"threads":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"version":env!("CARGO_PKG_VERSION")}}),
+        json!({"folders":folders::list(&state)?,"settings":state.settings()?,"bots":state.bots()?,"tasks":state.tasks()?,"connections":state.connections()?,"approvals":approvals,"schedules":orchestration::list(&state)?,"plugins":marketplace::installed(&state)?,"pluginSources":marketplace::sources(&state)?,"downloads":state.downloads.lock().map_err(db_error)?.values().cloned().collect::<Vec<_>>(),"device":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"threads":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"version":env!("CARGO_PKG_VERSION")}}),
     )
 }
 #[tauri::command]
@@ -831,7 +837,7 @@ fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 fn main() {
-    let mut builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     if std::env::var_os("TEAMMATE_DATA_DIR").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(w) = app.get_webview_window("main") {
@@ -917,6 +923,9 @@ fn main() {
             orchestration::run_schedule_now,
             models::local_models,
             cli_models::detect_model_clients,
+            folders::pick_workspace_folder,
+            folders::attach_workspace_folder,
+            folders::detach_workspace_folder,
             models::download_model,
             models::cancel_download,
             remote::remote_status,

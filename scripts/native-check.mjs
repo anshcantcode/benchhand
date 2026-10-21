@@ -1,7 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { randomUUID, generateKeyPairSync, sign } from "node:crypto";
 import { checkFeatures } from "./native-features.mjs";
@@ -233,6 +233,7 @@ try {
   const page = context.pages()[0];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.getByRole("button", { name: "Personalize workspace" }).click();
   await expect(page.locator("#setup-owner")).toBeVisible();
   await page.locator("#setup-owner").fill("Native check");
   await page.locator("#setup-workspace").fill("Isolated desktop check");
@@ -247,6 +248,7 @@ try {
   await page.getByRole("button", { name: "Verify & connect" }).click();
   await expect(page.locator("dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Explore first" }).click();
+  await page.getByRole("button", { name: "More tools", exact:true }).click();
   await page
     .locator("nav")
     .getByRole("button", { name: "Connections" })
@@ -312,7 +314,23 @@ try {
   await expect(page.locator(".client-row")).toHaveCount(3);
   await page.screenshot({ path: "design/screenshots/native-models.png", fullPage: true });
   console.log("Native model discovery and persisted, inspectable task transcript passed.");
-  await checkFeatures(page, {
+  const projectFolder = resolve(directory, "local-project");
+  await mkdir(projectFolder);
+  await writeFile(resolve(projectFolder, "notes.txt"), "Existing local notes");
+  await page.locator("nav").getByRole("button", {name:"Folders",exact:true}).click();
+  await page.getByRole("button", {name:"Add a folder",exact:true}).click();
+  await page.getByText("Enter a folder path instead", {exact:true}).click();
+  await page.locator("dialog [name=path]").fill(projectFolder);
+  await page.getByRole("button", {name:"Connect this path",exact:true}).click();
+  await expect(page.locator(".folder-row")).toContainText("local-project");
+  const connectedFolders = await page.evaluate(async () => (await window.__TAURI__.core.invoke("bootstrap")).folders);
+  expect(connectedFolders).toHaveLength(1);
+  await page.screenshot({path:"design/screenshots/native-folders.png",fullPage:true});
+  await page.getByRole("button", {name:"Disconnect",exact:true}).click();
+  await expect(page.locator(".folder-row")).toHaveCount(0);
+  expect(await readFile(resolve(projectFolder,"notes.txt"),"utf8")).toBe("Existing local notes");
+  console.log("Native working folder connection, persistence and disconnect-without-deletion passed.");
+  if (!process.argv.includes("--core-only")) await checkFeatures(page, {
     directory,
     endpoint,
     pid: app.pid,

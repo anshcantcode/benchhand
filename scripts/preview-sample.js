@@ -54,7 +54,7 @@
     ],
     pluginSources: [{ id: "featured", label: "Featured tools" }, { id: "registry", label: "Official MCP Registry" }],
     downloads: [{ id: "d1", model: "llama3.2:3b", state: "downloading", status: "Pulling model layers", completed: 1240000000, total: 2020000000 }],
-    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.0" },
+    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.1" },
   };
   // Event text matches what the runtime records, so the Steps list is derived the same way as in the app.
   const run = (start, ...lines) => [{ message: "Task created", createdAt: ago(start + 0.2) }, { message: "Run started", createdAt: ago(start) }, ...lines.map(([m, at]) => ({ message: m, createdAt: ago(at) }))];
@@ -72,6 +72,9 @@
     { id: 104, message: JSON.stringify({kind:"tool_result",title:"Browse workspace files",detail:JSON.stringify({files:["triage-notes.md"]},null,2)}), createdAt: ago(0.15) },
     { id: 105, message: JSON.stringify({kind:"model_output",title:"Model output",detail:"The duplicate reports share the same Wayland tray initialization path. Waiting for Scout’s comparison before writing the final triage."}), createdAt: ago(0.1) }
   );
+  if (q.get("page") === "folders") state.folders = [{botId:"research",path:"C:/Projects/product-notes"}];
+  if (q.get("fresh") === "1") { state.tasks = []; state.approvals = []; state.connections = []; state.bots.forEach((b) => b.providerId = ""); }
+  if (q.get("fresh") === "connected") { state.tasks = []; state.approvals = []; }
   const clone = (v) => JSON.parse(JSON.stringify(v));
   window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: async (c, a = {}) => {
     switch (c) {

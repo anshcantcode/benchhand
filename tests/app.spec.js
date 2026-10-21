@@ -1,12 +1,42 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
+test("a fresh workspace starts with one model choice and a usable first task", async ({ page }) => {
+  await nativeFixture(page, {connected:false,setup:false,tools:false});
+  await expect(page.getByRole("heading", {name:"Start with a model",exact:true})).toBeVisible();
+  await expect(page.locator("#setup-owner")).toHaveCount(0);
+  await expect(page.locator(".team-lanes")).toHaveCount(0);
+  await expect(page.locator("nav").getByRole("button", {name:"Marketplace",exact:true})).toHaveCount(0);
+  await page.getByRole("button", {name:"Use Claude Code",exact:true}).click();
+  await expect(page.locator("dialog [name=model]")).not.toBeVisible();
+  await page.getByRole("button", {name:"Check installation & connect"}).click();
+  await expect(page.getByRole("heading", {name:"Try your first task",exact:true})).toBeVisible();
+  await page.getByRole("button", {name:"Try a simple task",exact:true}).click();
+  await expect(page.getByRole("heading", {name:/Introduce yourself/})).toBeVisible();
+  expect(await page.evaluate(() => window.fixtureState.tasks.length)).toBe(1);
+});
+
+test("folders connect through the picker, target a task and disconnect without deleting files", async ({ page }) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", {name:"Folders",exact:true}).click();
+  await page.getByRole("button", {name:"Add a folder",exact:true}).click();
+  await page.getByRole("button", {name:"Choose folder on this computer",exact:true}).click();
+  await expect(page.locator(".folder-row")).toContainText("C:/Projects/benchhand-check");
+  await page.getByRole("button", {name:"Start a task here",exact:true}).click();
+  await expect(page.locator("dialog [name=description]")).toHaveValue(/attached folder/);
+  await page.getByRole("button", {name:"Close panel"}).click();
+  await page.getByRole("button", {name:"Disconnect",exact:true}).click();
+  await expect(page.locator(".folder-row")).toHaveCount(0);
+  expect(await page.evaluate(() => window.commandCalls.filter((c) => c.command.includes("delete")).length)).toBe(0);
+});
+
 test("signed-in CLI models connect without copying credentials and remain editable", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
   await expect(page.locator(".client-row").first()).toContainText("Installed");
   await page.getByRole("button", { name: "Connect Claude Code", exact: true }).click();
   await expect(page.locator("dialog [name=secret]")).toHaveCount(0);
+  await page.getByText("Model and connection settings", {exact:true}).click();
   await page.locator("dialog [name=model]").fill("sonnet");
   await page.getByRole("button", { name: "Check installation & connect" }).click();
   await expect(page.locator(".model-connection").filter({ hasText: "Claude Code" })).toContainText("sonnet");
@@ -147,9 +177,10 @@ test("computer access explicitly selects teammates input and expiry", async ({
   await expect(page.getByText("Access off", { exact: true })).toBeVisible();
 });
 
-async function nativeFixture(page, { setup = true, connected = true } = {}) {
+async function nativeFixture(page, { setup = true, connected = true, tools = true } = {}) {
   await page.addInitScript(
-    ({ setup, connected }) => {
+    ({ setup, connected, tools }) => {
+      localStorage.setItem("benchhand-more-tools", tools ? "1" : "0");
       const now = Math.floor(Date.now() / 1000);
       const saved = sessionStorage.getItem("fixture");
       const state = saved
@@ -451,6 +482,12 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
                 result = c;
                 break;
               }
+              case "pick_workspace_folder":
+              case "attach_workspace_folder": {
+                const folder = {botId:args.botId,path:args.path || "C:/Projects/benchhand-check"};
+                state.folders = [...(state.folders || []).filter((f) => f.botId !== args.botId),folder]; result = folder; break;
+              }
+              case "detach_workspace_folder": state.folders = (state.folders || []).filter((f) => f.botId !== args.botId); break;
               case "detect_model_clients":
                 result = [{provider:"claude",installed:true,version:"Claude Code test"},{provider:"codex",installed:true,version:"Codex CLI test"},{provider:"gemini",installed:false,error:"Not found"}];
                 break;
@@ -581,7 +618,7 @@ async function nativeFixture(page, { setup = true, connected = true } = {}) {
         },
       };
     },
-    { setup, connected },
+    { setup, connected, tools },
   );
   await page.goto("/");
 }
@@ -590,6 +627,7 @@ test("guided setup connects a model and preserves a personalized workspace", asy
   page,
 }) => {
   await nativeFixture(page, { setup: false, connected: false });
+  await page.getByRole("button", { name: "Personalize workspace" }).click();
   await expect(
     page.getByRole("heading", { name: "Set up your workspace" }),
   ).toBeVisible();
@@ -607,10 +645,10 @@ test("guided setup connects a model and preserves a personalized workspace", asy
   await page.getByRole("button", { name: "Light", exact: true }).click();
   await page.getByRole("button", { name: "Accent #5b9be0" }).click();
   await page.getByRole("button", { name: "Open my workspace" }).click();
-  await expect(page.locator("h1")).toContainText("Mira");
+  await expect(page.locator(".workspace-button")).toContainText("Mira");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.reload();
-  await expect(page.locator("h1")).toContainText("Mira");
+  await expect(page.locator(".workspace-button")).toContainText("Mira");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
@@ -980,6 +1018,7 @@ test("background task refresh preserves composer text, focus, and teammate selec
     window.fixtureState.tasks[0].status = "running";
   });
   await page.evaluate(() => refresh());
+  await page.getByText("Choose a teammate", {exact:true}).click();
   await page
     .getByRole("combobox", { name: "Assign to teammate" })
     .selectOption("code");

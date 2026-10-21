@@ -42,6 +42,7 @@ Most AI tools are a chat box. Benchhand is a **durable task system**: each teamm
 | **Delegation** | Teammates discover each other and create child tasks. A shared turn budget, depth limit and loop detection keep runs bounded. |
 | **Routines** | Once, interval, daily and weekly schedules with IANA time zones, daylight saving handling and missed-run policies. |
 | **Models** | Connect signed-in CLIs, local servers and cloud APIs. Browse and download Ollama models with progress and cancellation. |
+| **Working folders** | Connect an existing local folder to an assistant. Read project files, review each proposed write, and keep the folder in place. |
 | **Connections** | GitHub, Slack, and Streamable HTTP MCP servers, with secrets in Windows Credential Manager or Linux Secret Service. |
 | **Marketplace** | Featured tools, Official MCP Registry search, signed catalogs, exact-version review, managed npm installs, updates and uninstall. |
 | **Computer control** | Time-limited, per-teammate screen capture and approved input. Stop at any time with Ctrl+Alt+Escape. |
@@ -69,7 +70,7 @@ Most AI tools are a chat box. Benchhand is a **durable task system**: each teamm
 
 1. **Download** the Windows installer, Debian package or AppImage from [Releases](https://github.com/anshcantcode/benchhand/releases).
 2. **Connect a model.** Open **Models** to connect an already signed-in Claude Code, Codex CLI or Gemini CLI; use [Ollama](https://ollama.com/download) for local models; or connect a cloud API key.
-3. **Give a teammate a task** from the overview, then follow it in **Tasks** and decide in **Approvals**.
+3. **Try a simple task** from the start screen. Add your own folder in **Folders** when you want to work with project files. Follow progress in **Tasks**; advanced features are under **More tools**.
 
 The [user guide](docs/USER_GUIDE.md) covers GitHub and Slack tokens, computer control, plugins, routines, delegation and current limits.
 
