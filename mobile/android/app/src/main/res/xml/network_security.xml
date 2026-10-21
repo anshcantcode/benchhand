@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The computer is reached at its Tailscale address (100.x.y.z) over plain HTTP.
+     Tailscale encrypts the link end to end with WireGuard, and the computer refuses
+     anything that does not come from your Tailscale network. Android cannot scope
+     cleartext to an IP range, so it is allowed here. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

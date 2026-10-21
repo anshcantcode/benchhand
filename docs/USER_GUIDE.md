@@ -39,7 +39,7 @@ Teammates can use **team_directory** and **delegate_task** during ordinary tasks
 
 ### Phone access
 
-The Android app lets you approve or reject waiting actions, give a teammate a task, and run routines while you are away from the computer. Phone access is off until you pair a phone.
+The [Android app](../mobile/android/README.md) lets you approve or reject waiting actions, give a teammate a task, and run routines while you are away from the computer. Phone access is off until you pair a phone.
 
 1. Install [Tailscale](https://tailscale.com/download) on the computer and the phone, and sign in to the same account on both.
 2. On the computer, open **Preferences → Phone** and choose **Pair a phone**. A QR code and a pairing code appear.
