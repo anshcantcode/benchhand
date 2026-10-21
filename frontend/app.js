@@ -92,7 +92,15 @@ let data = {
   libraryLoaded = false,
   libraryError = "";
 let modelClients = [], clientScan = "idle", clientError = "", activityFilter = "all", moreTools = localStorage.getItem("benchhand-more-tools") === "1";
-const clientNames = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI" };
+const clientNames = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", opencode: "OpenCode", copilot: "GitHub Copilot CLI", qwen: "Qwen Code" };
+const clientDocs = {
+  claude:"https://code.claude.com/docs/en/setup",
+  codex:"https://learn.chatgpt.com/docs/codex/quickstart",
+  gemini:"https://geminicli.com/docs/get-started/installation/",
+  opencode:"https://opencode.ai/docs/",
+  copilot:"https://docs.github.com/en/copilot/how-tos/copilot-cli/install-copilot-cli",
+  qwen:"https://qwenlm.github.io/qwen-code-docs/en/users/quickstart/",
+};
 const defaultAccent = "#54c2a4",
   legacyAccent = "#b4a0ff";
 const accents = [
@@ -1015,7 +1023,8 @@ function connectionInput() {
     secret: v.get("secret") || "",
     config: {
       baseUrl: v.get("baseUrl") || "",
-      model: v.get("model") || "",
+      model: v.get("model") === "__custom" ? v.get("customModel") : v.get("model") || "",
+      reasoningEffort: v.get("reasoningEffort") || "default",
       protocol: v.get("protocol") || "chat",
       toolMode: v.get("toolMode") || "native",
       vision: v.get("vision") === "on",
@@ -1025,10 +1034,62 @@ function connectionInput() {
     },
   };
 }
+let cliCatalog = [], cliCatalogRequest = 0;
+const cliPresets = {
+  codex: ["gpt-6.1-sol","gpt-6-sol","gpt-6-astra","gpt-6-luna","gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna"].map(id => ({id,name:id.replace("gpt-","GPT-").replaceAll("-"," "),efforts:["low","medium","high","xhigh","max"]})),
+  claude: [{id:"sonnet",name:"Sonnet"},{id:"opus",name:"Opus"},{id:"haiku",name:"Haiku"}],
+  gemini: ["gemini-3-pro-preview","gemini-3-flash-preview","gemini-2.5-pro","gemini-2.5-flash"].map(id=>({id,name:id})),
+  copilot: ["gpt-5.3-codex","gpt-5.6-luna","claude-haiku-4.5"].map(id=>({id,name:id})),
+  qwen: ["qwen3-coder-plus","qwen3-coder-flash"].map(id=>({id,name:id})),
+  opencode: [],
+};
+function cliModelOptions(provider, selected = "default", models = []) {
+  const reported = new Set(models.map(m => m.id));
+  cliCatalog = [...models, ...(cliPresets[provider] || []).filter(m => !reported.has(m.id))];
+  const known = selected === "default" || cliCatalog.some(m => m.id === selected);
+  const options = rows => rows.map(m => `<option value="${esc(m.id)}" ${m.id === selected ? "selected" : ""}>${esc(m.name || m.id)}</option>`).join("");
+  const target = sheet.querySelector("#cli-model-fields");
+  target.innerHTML = `<label class="field"><span>Model</span><select name="model" id="cli-model"><option value="default" ${selected === "default" ? "selected" : ""}>Client default</option>${models.length ? `<optgroup label="Reported by your installed client">${options(models)}</optgroup>` : ""}<optgroup label="${["claude"].includes(provider) ? "Client model aliases" : "Known model IDs · account access required"}">${options(cliCatalog.filter(m => !reported.has(m.id)))}</optgroup><option value="__custom" ${!known ? "selected" : ""}>Custom model ID…</option></select></label><label class="field" id="cli-custom-model" ${known ? "hidden" : ""}><span>Custom model ID</span><input name="customModel" maxlength="200" value="${esc(!known ? selected : "")}" ${known ? "" : "required"}></label><label class="field" id="cli-effort-field" ${["gemini","qwen"].includes(provider) ? "hidden" : ""}><span>Reasoning effort</span><select name="reasoningEffort" id="cli-effort" aria-label="Reasoning effort"></select><small class="helper">Higher effort can take longer and use more of your plan.</small></label><p class="helper" id="cli-catalog-status" role="status">${["codex","opencode"].includes(provider) ? "Loading models from your installed CLI…" : "Known choices are not an account model list. Your CLI resolves model IDs; access depends on its version and your account. Use Custom model ID for any other supported model."}</p>`;
+  updateCliEfforts();
+}
+function updateCliEfforts(preferred = "default") {
+  const provider = sheet.querySelector("#cli-provider").value;
+  const value = sheet.querySelector("#cli-model").value;
+  const model = cliCatalog.find(m => m.id === value);
+  const efforts = ["gemini","qwen"].includes(provider) ? [] : model?.efforts || (provider === "claude" ? ["low","medium","high","max"] : ["low","medium","high","xhigh","max"]);
+  const choices = efforts.map(e => typeof e === "string" ? e : e.reasoningEffort);
+  sheet.querySelector("#cli-effort").innerHTML = `<option value="default">Model default</option>${choices.map(e => `<option value="${esc(e)}">${esc(e[0].toUpperCase()+e.slice(1))}</option>`).join("")}`;
+  sheet.querySelector("#cli-effort").value = choices.includes(preferred) ? preferred : "default";
+  const custom = sheet.querySelector("#cli-custom-model");
+  custom.hidden = value !== "__custom";
+  custom.querySelector("input").required = value === "__custom";
+}
+async function loadCliCatalog(selected = "default", effort = "default") {
+  const request = ++cliCatalogRequest;
+  const form = sheet.querySelector("#connection-form");
+  const provider = form.querySelector("#cli-provider").value;
+  cliModelOptions(provider, selected);
+  updateCliEfforts(effort);
+  if (!["codex","opencode"].includes(provider)) return;
+  try {
+    const result = await invoke("list_cli_models", {config:{cli:provider,executable:form.querySelector("[name=executable]").value}});
+    if (request !== cliCatalogRequest || sheet.querySelector("#connection-form") !== form || form.querySelector("#cli-provider").value !== provider) return;
+    if (!Array.isArray(result?.models)) throw new Error("Install the latest desktop build to discover models.");
+    const current = form.querySelector("#cli-model").value;
+    const saved = current === "__custom" ? form.querySelector("[name=customModel]").value : current;
+    const savedEffort = form.querySelector("#cli-effort").value;
+    cliModelOptions(provider, saved, result.models);
+    updateCliEfforts(savedEffort);
+    form.querySelector("#cli-catalog-status").textContent = `${result.models.length} models reported by your CLI. Other model IDs require account access; connecting checks installation, and the first task checks model access.`;
+  } catch(e) {
+    if (request === cliCatalogRequest && sheet.querySelector("#connection-form") === form) form.querySelector("#cli-catalog-status").textContent = `Model discovery unavailable: ${String(e)} You can choose a listed ID or enter your own.`;
+  }
+}
 function cliConnectionForm(provider = "claude", connection = null) {
   editingConnection = connection;
   const c = connection?.config || {}, name = clientNames[c.cli || provider] || clientNames.claude;
-  openSheet(`${dialogHeading(`Connect ${name}`, "Use the account already signed in on this computer.")}<form id="connection-form" data-kind="model"><div class="sheet-body"><input type="hidden" name="protocol" value="cli"><div class="connection-help"><strong>No API key needed</strong><p>If ${esc(name)} is installed and signed in, connect it below. Your provider’s account access and usage limits still apply.</p></div><details class="cli-advanced" ${connection ? "open" : ""}><summary>Model and connection settings</summary><label class="field"><span>Installed tool</span><select name="cli" id="cli-provider">${Object.entries(clientNames).map(([id, title]) => `<option value="${id}" ${id === (c.cli || provider) ? "selected" : ""}>${title}</option>`).join("")}</select></label><label class="field"><span>Connection name</span><input name="label" required maxlength="80" value="${esc(connection?.label || name)}"></label><label class="field"><span>Model</span><input name="model" value="${esc(c.model || "default")}" required maxlength="200"><small class="helper">Leave default to let the CLI choose, or enter a model ID your account can access.</small></label><label class="field"><span>Executable location</span><input name="executable" value="${esc(c.executable || "")}" placeholder="Automatic · find on PATH"><small class="helper">Optional native executable or installed JavaScript entry. Windows command shims are not supported.</small></label></details><details class="cli-advanced"><summary>How this connection works</summary><p class="helper">Sign in with the official CLI first. Benchhand keeps authentication with it and sends text context through its command interface. Tool requests use Benchhand’s approval flow. A vision companion can describe screenshots.</p></details><div class="form-error" role="alert" hidden></div>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">Disconnect</button><div class="disconnect-confirm" hidden><p>Remove this model connection?</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">Check installation & connect</button></div></form>`);
+  openSheet(`${dialogHeading(connection ? `Manage ${esc(connection.label)}` : `Connect ${name}`, "Choose a model using your existing sign-in.")}<form id="connection-form" data-kind="model"><div class="sheet-body"><input type="hidden" name="protocol" value="cli"><label class="field"><span>Installed tool</span><select name="cli" id="cli-provider">${Object.entries(clientNames).map(([id, title]) => `<option value="${id}" ${id === (c.cli || provider) ? "selected" : ""}>${title}</option>`).join("")}</select></label><div id="cli-model-fields"></div><button type="button" class="text-button" data-action="open-cli-docs" data-provider="${c.cli || provider}">Installation and sign-in instructions ${icon("external")}</button><p class="helper">Optional clients are installed separately. OpenCode, Copilot and Qwen adapters are experimental. Each client may keep its own local session logs and configuration.</p><details class="cli-advanced"><summary>Model and connection settings</summary><label class="field"><span>Connection name</span><input name="label" required maxlength="80" value="${esc(connection?.label || name)}"></label><label class="field"><span>Executable location</span><input name="executable" value="${esc(c.executable || "")}" placeholder="Automatic · find on PATH"><small class="helper">Optional native executable or installed JavaScript entry. Windows command shims are not supported.</small></label><button type="button" class="button secondary small" data-action="refresh-cli-models">Refresh models</button></details><details class="cli-advanced"><summary>How this connection works</summary><p class="helper">No API key needed. Sign in with the official CLI first. Benchhand keeps authentication with it and sends text context through its command interface. Tool requests use Benchhand’s approval flow. A vision companion can describe screenshots.</p></details><div class="form-error" role="alert" hidden></div>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">Disconnect</button><div class="disconnect-confirm" hidden><p>Remove this model connection?</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">Check installation & connect</button></div></form>`);
+  loadCliCatalog(c.model || "default", c.reasoningEffort || "default");
 }
 async function scanModelClients() {
   if (clientScan === "scanning") return;
@@ -1039,7 +1100,7 @@ async function scanModelClients() {
 }
 function modelHub() {
   const connections = data.connections.filter((c) => c.kind === "model");
-  return `<section class="panel model-clients">${section("Use your signed-in tools", "Claude Code, Codex CLI and Gemini CLI", button("scan-model-clients", clientScan === "scanning" ? "Scanning…" : "Scan this computer", "refresh", clientScan === "scanning" ? "disabled" : "", "button secondary small"))}<p class="model-intro">Choose the tools you already use. Their sign-in stays on this computer; requests use your provider account.</p><div class="client-list">${Object.entries(clientNames).map(([id, name]) => { const found = modelClients.find((c) => c.provider === id); return `<article class="client-row"><span class="client-name">${icon("terminal")}<span><strong>${name}</strong><small>${found?.installed ? esc(found.version) : clientScan === "scanning" ? "Checking installation…" : found ? "Not found automatically · set a path to connect" : "Sign in with its CLI, then connect"}</small></span></span><span class="client-status ${found?.installed ? "available" : ""}">${found?.installed ? "Installed" : ""}</span><button class="button secondary small" data-action="connect-cli" data-provider="${id}">Connect<span class="visually-hidden"> ${name}</span></button></article>`; }).join("")}</div>${clientError ? `<p class="model-intro" role="alert">${esc(clientError)}</p>` : ""}</section><section class="panel connected-models">${section("Ready to assign", plural(connections.length, "model connection"))}${connections.length ? `<div class="model-connections">${connections.map((c) => `<article class="model-connection"><div><strong>${esc(c.label)}</strong><small>${esc(c.config.model)} · ${c.config.protocol === "cli" ? "Signed-in CLI" : /localhost|127\.0\.0\.1/.test(c.config.baseUrl || "") ? "Local server" : "API connection"}</small></div><span class="subtle">${plural(data.bots.filter((b) => b.providerId === c.id).length, "teammate")}</span><button class="button quiet small" data-action="edit-connection" data-id="${esc(c.id)}">Manage</button></article>`).join("")}</div>` : `<p class="panel-empty">Connect a CLI, local server, or cloud API below. Then choose it in a teammate’s settings.</p>`}<div class="model-shortcuts"><button class="button secondary" data-action="connect-model" data-preset="ollama">${icon("model")} Connect local server</button><button class="button secondary" data-action="connect-model" data-preset="openai">${icon("globe")} Connect cloud API</button><button class="text-button" data-action="navigate" data-page="team">Assign to a teammate ${icon("arrow")}</button></div></section>`;
+  return `<section class="panel model-clients">${section("Use your signed-in tools", "Six CLI connections · installed separately", button("scan-model-clients", clientScan === "scanning" ? "Scanning…" : "Scan this computer", "refresh", clientScan === "scanning" ? "disabled" : "", "button secondary small"))}<p class="model-intro">Choose the tools you already use. Their sign-in stays on this computer; requests use your provider account.</p><div class="client-list">${Object.entries(clientNames).map(([id, name]) => { const found = modelClients.find((c) => c.provider === id); return `<article class="client-row"><span class="client-name">${icon("terminal")}<span><strong>${name}</strong><small>${found?.installed ? esc(found.version) : clientScan === "scanning" ? "Checking installation…" : found ? "Not found automatically · install or set a path" : "Sign in with its CLI, then connect"}</small></span></span><span class="client-status ${found?.installed ? "available" : ""}">${found?.installed ? "Installed" : ""}</span><span class="client-actions"><button class="text-button small" data-action="open-cli-docs" data-provider="${id}">Setup<span class="visually-hidden"> ${name}</span></button><button class="button secondary small" data-action="connect-cli" data-provider="${id}">Connect<span class="visually-hidden"> ${name}</span></button></span></article>`; }).join("")}</div>${clientError ? `<p class="model-intro" role="alert">${esc(clientError)}</p>` : ""}</section><section class="panel connected-models">${section("Ready to assign", plural(connections.length, "model connection"))}${connections.length ? `<div class="model-connections">${connections.map((c) => `<article class="model-connection"><div><strong>${esc(c.label)}</strong><small>${esc(c.config.model)}${c.config.reasoningEffort && c.config.reasoningEffort !== "default" ? ` · ${esc(c.config.reasoningEffort)} effort` : ""} · ${c.config.protocol === "cli" ? "Signed-in CLI" : /localhost|127\.0\.0\.1/.test(c.config.baseUrl || "") ? "Local server" : "API connection"}</small></div><span class="subtle">${plural(data.bots.filter((b) => b.providerId === c.id).length, "teammate")}</span><button class="button quiet small" data-action="edit-connection" data-id="${esc(c.id)}">Manage</button></article>`).join("")}</div>` : `<p class="panel-empty">Connect a CLI, local server, or cloud API below. Then choose it in a teammate’s settings.</p>`}<div class="model-shortcuts"><button class="button secondary" data-action="connect-model" data-preset="ollama">${icon("model")} Connect local server</button><button class="button secondary" data-action="connect-model" data-preset="openai">${icon("globe")} Connect cloud API</button><button class="text-button" data-action="navigate" data-page="team">Assign to a teammate ${icon("arrow")}</button></div></section>`;
 }
 function activityEvent(event) {
   try { const parsed = JSON.parse(event.message); if (parsed && typeof parsed.kind === "string") return { ...event, ...parsed }; } catch {}
@@ -1206,6 +1267,15 @@ async function handleAction(el) {
     case "scan-model-clients":
       await scanModelClients();
       break;
+    case "open-cli-docs":
+      await invoke("open_external", {url:clientDocs[sheet.querySelector("#cli-provider")?.value || el.dataset.provider]});
+      break;
+    case "refresh-cli-models": {
+      const f = sheet.querySelector("#connection-form");
+      const selected = f.querySelector("[name=model]").value;
+      await loadCliCatalog(selected === "__custom" ? f.querySelector("[name=customModel]").value : selected, f.querySelector("[name=reasoningEffort]").value);
+      break;
+    }
     case "connect-cli":
       cliConnectionForm(el.dataset.provider);
       break;
@@ -1700,8 +1770,9 @@ document.addEventListener("change", async (event) => {
       );
     if (el.id === "cli-provider") {
       sheet.querySelector("[name=label]").value = clientNames[el.value];
-      sheet.querySelector("[name=model]").value = "default";
+      await loadCliCatalog();
     }
+    if (el.id === "cli-model") updateCliEfforts();
     if (el.id === "provider-preset") {
       const p = providers[el.value];
       sheet.querySelector("[name=baseUrl]").value = p.url;

@@ -8,7 +8,7 @@ test("a fresh workspace starts with one model choice and a usable first task", a
   await expect(page.locator(".team-lanes")).toHaveCount(0);
   await expect(page.locator("nav").getByRole("button", {name:"Marketplace",exact:true})).toHaveCount(0);
   await page.getByRole("button", {name:"Use Claude Code",exact:true}).click();
-  await expect(page.locator("dialog [name=model]")).not.toBeVisible();
+  await expect(page.locator("dialog [name=model]")).toBeVisible();
   await page.getByRole("button", {name:"Check installation & connect"}).click();
   await expect(page.getByRole("heading", {name:"Try your first task",exact:true})).toBeVisible();
   await page.getByRole("button", {name:"Try a simple task",exact:true}).click();
@@ -30,6 +30,39 @@ test("folders connect through the picker, target a task and disconnect without d
   expect(await page.evaluate(() => window.commandCalls.filter((c) => c.command.includes("delete")).length)).toBe(0);
 });
 
+test("Codex models and supported effort are visible, saved and restored", async ({page}) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", {name:"Models",exact:true}).click();
+  await page.getByRole("button", {name:"Connect Codex CLI",exact:true}).click();
+  await expect(page.locator("#cli-catalog-status")).toContainText("1 models reported");
+  await expect(page.locator("#cli-custom-model")).toBeHidden();
+  await page.getByRole("combobox", {name:"Model",exact:true}).selectOption("gpt-6-luna");
+  await page.getByRole("combobox", {name:"Reasoning effort",exact:true}).selectOption("medium");
+  await page.getByRole("button", {name:"Check installation & connect"}).click();
+  const row = page.locator(".model-connection").filter({hasText:"Codex CLI"});
+  await expect(row).toContainText("gpt-6-luna · medium effort");
+  await row.getByRole("button", {name:"Manage",exact:true}).click();
+  await expect(page.locator("#cli-model")).toHaveValue("gpt-6-luna");
+  await expect(page.locator("#cli-effort")).toHaveValue("medium");
+  await page.locator("#cli-model").selectOption("__custom");
+  await expect(page.locator("#cli-custom-model")).toBeVisible();
+  await page.locator("[name=customModel]").fill("my-new-model");
+  await page.getByRole("button", {name:"Check installation & connect"}).click();
+  expect(await page.evaluate(() => window.fixtureState.connections.find(c=>c.config.cli === "codex").config.model)).toBe("my-new-model");
+});
+
+test("optional clients remain discoverable and Gemini and Qwen keep client effort defaults", async ({page}) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", {name:"Models",exact:true}).click();
+  await expect(page.locator(".client-row")).toHaveCount(6);
+  for(const provider of ["OpenCode","GitHub Copilot CLI","Qwen Code","Gemini CLI"]) {
+    await page.getByRole("button", {name:`Connect ${provider}`,exact:true}).click();
+    await expect(page.locator("#cli-model")).toBeVisible();
+    if(["Gemini CLI","Qwen Code"].includes(provider)) await expect(page.locator("#cli-effort-field")).toBeHidden();
+    await page.getByRole("button", {name:"Close panel",exact:true}).click();
+  }
+});
+
 test("signed-in CLI models connect without copying credentials and remain editable", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
@@ -37,7 +70,7 @@ test("signed-in CLI models connect without copying credentials and remain editab
   await page.getByRole("button", { name: "Connect Claude Code", exact: true }).click();
   await expect(page.locator("dialog [name=secret]")).toHaveCount(0);
   await page.getByText("Model and connection settings", {exact:true}).click();
-  await page.locator("dialog [name=model]").fill("sonnet");
+  await page.locator("dialog [name=model]").selectOption("sonnet");
   await page.getByRole("button", { name: "Check installation & connect" }).click();
   await expect(page.locator(".model-connection").filter({ hasText: "Claude Code" })).toContainText("sonnet");
   const saved = await page.evaluate(() => window.fixtureState.connections.find((c) => c.config.cli === "claude"));
@@ -488,6 +521,7 @@ async function nativeFixture(page, { setup = true, connected = true, tools = tru
                 state.folders = [...(state.folders || []).filter((f) => f.botId !== args.botId),folder]; result = folder; break;
               }
               case "detach_workspace_folder": state.folders = (state.folders || []).filter((f) => f.botId !== args.botId); break;
+              case "list_cli_models": return {models:[{id:"gpt-6-luna",name:"GPT-6 Luna",efforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"}],defaultEffort:"medium"}],source:"client"};
               case "detect_model_clients":
                 result = [{provider:"claude",installed:true,version:"Claude Code test"},{provider:"codex",installed:true,version:"Codex CLI test"},{provider:"gemini",installed:false,error:"Not found"}];
                 break;

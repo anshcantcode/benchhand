@@ -78,6 +78,7 @@
   const clone = (v) => JSON.parse(JSON.stringify(v));
   window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: async (c, a = {}) => {
     switch (c) {
+      case "list_cli_models": return {models:[{id:"gpt-6-astra",name:"GPT-6 Astra",efforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"}]},{id:"gpt-5.6-luna",name:"GPT-5.6 Luna",efforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"}]}],source:"client"};
       case "detect_model_clients": return [{provider:"claude",installed:true,version:"Sample installation"},{provider:"codex",installed:true,version:"Sample installation"},{provider:"gemini",installed:false}];
       case "bootstrap": return clone(state);
       case "task_events": { const t = state.tasks.find((t) => t.id === a.taskId); const m = (now - (t?.createdAt || now)) / 60; return clone(events[a.taskId] || (t?.status === "completed" ? run(m, ["Thinking · step 1 of 12", m - 0.5], ["Task completed", m - 3]) : [{ message: "Task created", createdAt: t?.createdAt || now }])); }
@@ -104,5 +105,6 @@
       default: return null;
     }
   } } };
+  if (q.get("cli")) addEventListener("load", () => setTimeout(() => { cliConnectionForm(q.get("cli")); }, 100));
   if (q.get("task")) addEventListener("load", () => setTimeout(() => window.detail && detail(q.get("task")), 50));
 })();

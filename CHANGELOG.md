@@ -4,6 +4,20 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-21
+
+### Added
+
+- Visible model and reasoning-effort selectors for CLI connections, with saved settings, custom model IDs, and model discovery through Codex app-server and OpenCode. Reported catalogs are distinguished from known model choices; account access is checked by the first task.
+- Experimental OpenCode, GitHub Copilot CLI and Qwen Code model transports. All six clients appear even before installation, with official installation/sign-in links. Clients and subscriptions are installed and managed separately.
+- Codex and Copilot effort overrides, Claude effort and OpenCode variants are sent on each invocation. Gemini and Qwen retain their own configured reasoning defaults.
+
+### Limits
+
+- The development PC passed a live GPT-5.6 Luna / Medium request. Its signed-in Codex CLI rejected GPT-6 Luna as unsupported for that ChatGPT account; a listed ID does not grant provider access.
+- OpenCode, Copilot and Qwen adapters have subprocess fixture coverage but no live signed-in verification on this PC. They restrict native tools for transport use; installed client plugins, hooks, configuration and local logs remain subject to that client's behavior. These are not OS sandboxes.
+- Copilot context is capped at 24 KB to fit Windows command-line limits. Other CLI transports retain the 2 MB context limit.
+
 ## [0.4.1] - 2026-10-21
 
 ### Added

@@ -923,6 +923,7 @@ fn main() {
             orchestration::run_schedule_now,
             models::local_models,
             cli_models::detect_model_clients,
+            cli_models::list_cli_models,
             folders::pick_workspace_folder,
             folders::attach_workspace_folder,
             folders::detach_workspace_folder,

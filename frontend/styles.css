@@ -3241,3 +3241,7 @@ dialog[open] {
 
 .button.primary { background:var(--text); color:var(--ground); border-color:transparent; }
 .button.primary:hover { background:var(--text-2); }
+
+.client-actions { display: flex; align-items: center; gap: 12px; }
+.field[hidden] { display: none; }
+#cli-model-fields { margin-top: 20px; }
