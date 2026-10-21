@@ -319,6 +319,7 @@ try {
   await page.locator("#cli-effort").selectOption("medium");
   await page.screenshot({path:"design/screenshots/native-cli-picker.png",fullPage:true});
   await page.getByRole("button", {name:"Check installation & connect",exact:true}).click();
+  await expect(page.locator(".model-connection").filter({hasText:"Codex CLI"})).toContainText("gpt-5.6-luna · medium effort");
   const savedCli = await page.evaluate(async () => (await window.__TAURI__.core.invoke("bootstrap")).connections.find(c=>c.config.cli === "codex"));
   expect(savedCli.config.model).toBe("gpt-5.6-luna");
   expect(savedCli.config.reasoningEffort).toBe("medium");
