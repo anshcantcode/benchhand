@@ -293,6 +293,25 @@ try {
   console.log(
     "Native desktop check passed: real WebView2 → Rust IPC → model HTTP → workspace write → approval → MCP tool → saved result.",
   );
+  const transcript = await page.evaluate(async () => {
+    const state = await window.__TAURI__.core.invoke("bootstrap");
+    const task = state.tasks.find((t) => t.title === "Check the native task and approval workflow");
+    const events = await window.__TAURI__.core.invoke("task_events", { taskId: task.id });
+    return events.flatMap((event) => { try { return [JSON.parse(event.message)]; } catch { return []; } });
+  });
+  expect(transcript.some((event) => event.kind === "tool_input")).toBe(true);
+  expect(transcript.some((event) => event.kind === "tool_result")).toBe(true);
+  expect(transcript.some((event) => event.kind === "model_output")).toBe(true);
+  await page.getByRole("tab", { name: "Tools", exact: true }).click();
+  await expect(page.locator(".trace-tool_input").first()).toBeVisible();
+  await page.locator(".trace-tool_input summary").first().click();
+  await expect(page.locator(".trace-tool_input pre").first()).toContainText("native-result.md");
+  const clients = await page.evaluate(() => window.__TAURI__.core.invoke("detect_model_clients"));
+  expect(clients.map((client) => client.provider)).toEqual(["claude", "codex", "gemini"]);
+  await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
+  await expect(page.locator(".client-row")).toHaveCount(3);
+  await page.screenshot({ path: "design/screenshots/native-models.png", fullPage: true });
+  console.log("Native model discovery and persisted, inspectable task transcript passed.");
   await checkFeatures(page, {
     directory,
     endpoint,
