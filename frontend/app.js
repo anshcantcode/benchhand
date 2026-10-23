@@ -782,7 +782,7 @@ function settingsView() {
   )}${settingRow(
     "Workspace",
     "Names, the first screen, and how long a run may go on.",
-    `<div class="two-columns"><label class="field"><span>Workspace name</span><input data-pref="workspaceName" maxlength="60" value="${esc(s.workspaceName)}"></label><label class="field"><span>Your name</span><input data-pref="ownerName" maxlength="60" value="${esc(s.ownerName)}" placeholder="First name"></label></div><div class="two-columns spaced"><label class="field"><span>Open on</span><select data-pref="defaultView">${["home", "tasks", "team", "connections"].map((v) => `<option value="${v}" ${s.defaultView === v ? "selected" : ""}>${pages[v]}</option>`).join("")}</select></label><label class="field"><span>Maximum steps per run</span><input type="number" min="1" max="30" data-pref="maxSteps" value="${s.maxSteps}"></label></div>${toggle("showStarters", "Suggested tasks", "Show three starting points under the task box.")}${toggle("showActivity", "Storage note", "Show where tasks and keys are stored.")}`,
+    `<div class="two-columns"><label class="field"><span>Workspace name</span><input data-pref="workspaceName" maxlength="60" value="${esc(s.workspaceName)}"></label><label class="field"><span>Your name</span><input data-pref="ownerName" maxlength="60" value="${esc(s.ownerName)}" placeholder="First name"></label></div><div class="two-columns spaced"><label class="field"><span>Open on</span><select data-pref="defaultView">${["home", "tasks", "team", "connections", "schedules", "extensions"].map((v) => `<option value="${v}" ${s.defaultView === v ? "selected" : ""}>${pages[v]}</option>`).join("")}</select></label><label class="field"><span>Maximum steps per run</span><input type="number" min="1" max="30" data-pref="maxSteps" value="${s.maxSteps}"></label></div>${toggle("showStarters", "Suggested tasks", "Show three starting points under the task box.")}${toggle("showActivity", "Storage note", "Show where tasks and keys are stored.")}`,
   )}${visionSettings()}${settingRow(
     "Backup",
     "Appearance and workspace preferences only. Keys and accounts are never exported.",
@@ -886,7 +886,8 @@ async function refresh() {
   data = await invoke("bootstrap");
   if (selectedTask)
     events = await invoke("task_events", { taskId: selectedTask });
-  if (!started) {
+  const first = !started;
+  if (first) {
     page = data.settings.defaultView || "home";
     setupOpen = false;
     setupStep = Math.min(
@@ -896,6 +897,7 @@ async function refresh() {
     started = true;
   }
   render();
+  if (first) featureNavigate(page).catch((e) => notify(e, true));
 }
 function navigate(next) {
   page = next;

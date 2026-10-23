@@ -166,6 +166,21 @@ test("marketplace reviews installs disables and removes a plugin", async ({
     .click();
   await expect(page.getByText("No plugins installed")).toBeVisible();
 });
+test("marketplace can be the startup page and loads its results", async ({
+  page,
+}) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", { name: "Preferences" }).click();
+  await page
+    .getByRole("combobox", { name: "Open on" })
+    .selectOption("extensions");
+  await expect
+    .poll(() => page.evaluate(() => window.fixtureState.settings.defaultView))
+    .toBe("extensions");
+  await page.reload();
+  await expect(page.locator("h1")).toHaveText("Marketplace");
+  await expect(page.getByText("Browser tools")).toBeVisible();
+});
 test("routines save weekly timing context and enabled state", async ({
   page,
 }) => {

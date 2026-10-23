@@ -148,7 +148,10 @@ fn validate_settings(input: &Value) -> Result<Value, String> {
         ("density", vec!["comfortable", "compact"]),
         ("font", vec!["sans", "mono"]),
         ("background", vec!["glow", "flat"]),
-        ("defaultView", vec!["home", "tasks", "team", "connections"]),
+        (
+            "defaultView",
+            vec!["home", "tasks", "team", "connections", "schedules", "extensions"],
+        ),
     ] {
         if !allowed.contains(&settings[key].as_str().unwrap_or("")) {
             return Err(format!("Invalid {key}"));
@@ -963,6 +966,11 @@ mod tests {
         assert!(validate_settings(&s).is_err());
         s = defaults();
         s["maxSteps"] = json!(999);
+        assert!(validate_settings(&s).is_err());
+        s = defaults();
+        s["defaultView"] = json!("extensions");
+        assert!(validate_settings(&s).is_ok());
+        s["defaultView"] = json!("settings");
         assert!(validate_settings(&s).is_err());
     }
     #[test]
