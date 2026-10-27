@@ -1,4 +1,5 @@
 use crate::{db_error, Connection};
+mod anthropic;
 use reqwest::{Client, Method, Url};
 use serde_json::{json, Value};
 use std::{
@@ -114,6 +115,9 @@ async fn request(
 }
 pub async fn probe_model(client: &Client, config: &Value, token: &str) -> Result<Value, String> {
     let base = base_url(config)?;
+    if config["protocol"] == "anthropic" {
+        return anthropic::models(client, &base, token).await;
+    }
     let response = request(client, Method::GET, &format!("{base}/models"), token, None).await?;
     let mut models: Vec<String> = response["data"]
         .as_array()
@@ -142,7 +146,7 @@ pub async fn verify_connection(
             }
             let base = base_url(config)?;
             let protocol = config["protocol"].as_str().unwrap_or("chat");
-            if !["chat", "responses"].contains(&protocol) {
+            if !["chat", "responses", "anthropic"].contains(&protocol) {
                 return Err("Choose a supported model protocol".into());
             }
             let tool_mode = config["toolMode"].as_str().unwrap_or("native");
@@ -637,6 +641,18 @@ pub async fn model_turn_observed(
                 }
             })
             .collect();
+    }
+    if protocol == "anthropic" {
+        return anthropic::turn(
+            client,
+            &base,
+            token,
+            &c.config,
+            &history,
+            tools,
+            &mut observe,
+        )
+        .await;
     }
     if protocol == "responses" {
         let instructions = history

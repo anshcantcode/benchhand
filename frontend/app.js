@@ -147,6 +147,11 @@ const providers = {
     url: "https://api.openai.com/v1",
     protocol: "responses",
   },
+  anthropic: {
+    label: "Anthropic",
+    url: "https://api.anthropic.com/v1",
+    protocol: "anthropic",
+  },
   openrouter: {
     label: "OpenRouter",
     url: "https://openrouter.ai/api/v1",
@@ -1010,7 +1015,8 @@ function connectionForm(kind = "model", preset = "", connection = null) {
   }
   editingConnection = connection;
   const c = connection?.config || {},
-    p = providers[preset] || providers[kind === "model" ? "ollama" : "custom"];
+    selectedPreset = preset || (connection ? Object.keys(providers).find((id) => providers[id].url === c.baseUrl && providers[id].protocol === c.protocol) || "custom" : "ollama"),
+    p = providers[selectedPreset] || providers.custom;
   let help = "";
   if (kind === "github")
     help = `<strong>A fine-grained personal access token.</strong><p>Grant repository metadata and issues read access. Add issues write access to create issues after approval.</p><button type="button" class="text-button" data-action="external" data-url="https://github.com/settings/personal-access-tokens/new">Create a GitHub token ${icon("external")}</button>`;
@@ -1021,7 +1027,7 @@ function connectionForm(kind = "model", preset = "", connection = null) {
       "<strong>A Streamable HTTP MCP server.</strong><p>Connecting discovers its tools. Each imported tool call waits for your approval.</p>";
   else
     help =
-      "<p>Start your local runtime first. Ollama uses port 11434; LM Studio commonly uses 1234. Local connections usually need no API key.</p>";
+      "<p>Choose a provider preset and discover its available models. Cloud providers need an API key; many local servers do not.</p>";
   openSheet(
     `${dialogHeading(connection ? `Manage ${esc(connection.label)}` : kind === "model" ? "Connect a model" : `Connect ${kind === "mcp" ? "an MCP server" : kind === "github" ? "GitHub" : "Slack"}`)}<form id="connection-form" data-kind="${kind}"><div class="sheet-body"><div class="connection-help">${help}</div><label class="field"><span>Connection name</span><input name="label" maxlength="80" value="${esc(connection?.label || (kind === "model" ? p.label : kind === "mcp" ? "My MCP server" : kind === "github" ? "GitHub" : "Slack"))}" required></label>${
       kind === "model"
@@ -1030,19 +1036,28 @@ function connectionForm(kind = "model", preset = "", connection = null) {
           )
             .map(
               ([id, pv]) =>
-                `<option value="${id}" ${id === (preset || "ollama") ? "selected" : ""}>${pv.label}</option>`,
+                `<option value="${id}" ${id === selectedPreset ? "selected" : ""}>${pv.label}</option>`,
             )
             .join("")}</select></label>`
         : ""
-    }${["model", "mcp"].includes(kind) ? `<label class="field"><span>${kind === "model" ? "API base URL" : "Streamable HTTP endpoint"}</span><input name="baseUrl" type="url" value="${esc(c.baseUrl || (kind === "model" ? p.url : ""))}" placeholder="${kind === "model" ? "http://127.0.0.1:11434/v1" : "https://your-server.example/mcp"}" required></label>` : ""}<label class="field"><span>${kind === "github" ? "Personal access token" : kind === "slack" ? "Slack token" : "API key / bearer token"} ${["model", "mcp"].includes(kind) ? "<small>Optional</small>" : ""}</span><input name="secret" type="password" autocomplete="new-password" placeholder="${connection?.config.hasSecret ? "Saved securely · leave blank to keep" : "Stored in your OS credential store"}" ${["github", "slack"].includes(kind) && !connection ? "required" : ""}></label>${kind === "model" ? `<div class="two-columns"><label class="field"><span>Protocol</span><select name="protocol"><option value="chat" ${(c.protocol || p.protocol) === "chat" ? "selected" : ""}>Chat Completions</option><option value="responses" ${(c.protocol || p.protocol) === "responses" ? "selected" : ""}>Responses API</option></select></label><label class="field"><span>Tool calling</span><select name="toolMode"><option value="native" ${!c.toolMode || c.toolMode === "native" ? "selected" : ""}>Native tools</option><option value="structured" ${c.toolMode === "structured" ? "selected" : ""}>Structured actions</option><option value="off" ${c.toolMode === "off" ? "selected" : ""}>Text only · tools off</option></select></label></div><div class="field"><label for="model-id">Model</label><div class="input-action"><input name="model" id="model-id" list="model-options" value="${esc(c.model || "")}" placeholder="Discover models, then select one" required><button type="button" class="button secondary" data-action="discover-models">${icon("refresh")} Discover</button></div><datalist id="model-options"></datalist><span class="helper" id="discovery-result">Use Structured actions for local models that need a JSON action adapter.</span></div>` : `<label class="toggle-row"><span><strong>Available to teammates</strong><small>Expose this connection’s tools during task runs.</small></span><input class="toggle" type="checkbox" name="enabledForAgents" ${c.enabledForAgents !== false ? "checked" : ""}></label>`}<div class="form-error" role="alert" hidden></div><p class="secure-note">${icon("key")} Secrets stay in your OS credential store and are never included in task prompts.</p>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">${icon("trash")} Disconnect</button><div class="disconnect-confirm" hidden><p>Disconnect this service and remove its saved secret? Active tasks will pause.</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">${icon("connections")} Verify & ${connection ? "save" : "connect"}</button></div></form>`,
+    }${["model", "mcp"].includes(kind) ? `<label class="field"><span>${kind === "model" ? "API base URL" : "Streamable HTTP endpoint"}</span><input name="baseUrl" type="url" value="${esc(c.baseUrl || (kind === "model" ? p.url : ""))}" placeholder="${kind === "model" ? "http://127.0.0.1:11434/v1" : "https://your-server.example/mcp"}" required></label>` : ""}<label class="field"><span>${kind === "github" ? "Personal access token" : kind === "slack" ? "Slack token" : "API key / bearer token"} ${kind === "model" ? "<small> · Optional for local servers</small>" : kind === "mcp" ? "<small>Optional</small>" : ""}</span><input name="secret" type="password" autocomplete="new-password" placeholder="${connection?.config.hasSecret ? "Saved securely · leave blank to keep" : "Stored in your OS credential store"}" ${["github", "slack"].includes(kind) && !connection ? "required" : ""}></label>${kind === "model" ? `<div class="two-columns"><label class="field"><span>Protocol</span><select name="protocol"><option value="chat" ${(c.protocol || p.protocol) === "chat" ? "selected" : ""}>Chat Completions</option><option value="responses" ${(c.protocol || p.protocol) === "responses" ? "selected" : ""}>Responses API</option><option value="anthropic" ${(c.protocol || p.protocol) === "anthropic" ? "selected" : ""}>Anthropic Messages</option></select></label><label class="field"><span>Tool calling</span><select name="toolMode"><option value="native" ${!c.toolMode || c.toolMode === "native" ? "selected" : ""}>Native tools</option><option value="structured" ${c.toolMode === "structured" ? "selected" : ""}>Structured actions</option><option value="off" ${c.toolMode === "off" ? "selected" : ""}>Text only · tools off</option></select></label></div><div class="field"><label for="model-id">Model</label><div class="input-action"><input name="model" id="model-id" list="model-options" value="${esc(c.model || "")}" placeholder="Discover models, then select one" required><button type="button" class="button secondary" data-action="discover-models">${icon("refresh")} Discover</button></div><datalist id="model-options"></datalist><span class="helper" id="discovery-result">Discover models available to this connection, then choose one.</span></div>` : `<label class="toggle-row"><span><strong>Available to teammates</strong><small>Expose this connection’s tools during task runs.</small></span><input class="toggle" type="checkbox" name="enabledForAgents" ${c.enabledForAgents !== false ? "checked" : ""}></label>`}<div class="form-error" role="alert" hidden></div><p class="secure-note">${icon("key")} Secrets stay in your OS credential store and are never included in task prompts.</p>${connection ? `<button type="button" class="text-button danger" data-action="confirm-disconnect">${icon("trash")} Disconnect</button><div class="disconnect-confirm" hidden><p>Disconnect this service and remove its saved secret? Active tasks will pause.</p><button type="button" class="button danger" data-action="disconnect" data-id="${esc(connection.id)}">Disconnect service</button></div>` : ""}</div><div class="sheet-footer"><button type="button" class="button quiet" data-action="close-sheet">Cancel</button><button class="button primary" type="submit">${icon("connections")} Verify & ${connection ? "save" : "connect"}</button></div></form>`,
   );
   if (kind === "model")
     sheet
       .querySelector(".form-error")
       .insertAdjacentHTML(
         "beforebegin",
-        `<label class="toggle-row"><span><strong>This model accepts images</strong><small>Enable for a vision capable model. Tool images can then be included in its context.</small></span><input type="checkbox" class="toggle" name="vision" ${c.vision ? "checked" : ""}></label><label class="toggle-row"><span><strong>Request reasoning summaries</strong><small>For reasoning models using the Responses API. Your provider must support summary requests.</small></span><input type="checkbox" class="toggle" name="reasoningSummary" ${c.reasoningSummary ? "checked" : ""}></label>`,
+        `<label class="toggle-row"><span><strong>This model accepts images</strong><small>Enable for a vision capable model. Tool images can then be included in its context.</small></span><input type="checkbox" class="toggle" name="vision" ${c.vision ? "checked" : ""}></label><label class="toggle-row" id="reasoning-summary-field"><span><strong>Request reasoning summaries</strong><small>For reasoning models using the Responses API. Your provider must support summary requests.</small></span><input type="checkbox" class="toggle" name="reasoningSummary" ${c.reasoningSummary ? "checked" : ""}></label>`,
       );
+  if (kind === "model") updateModelProtocolForm();
+}
+function updateModelProtocolForm() {
+  const form = sheet.querySelector("#connection-form");
+  const field = form?.querySelector("#reasoning-summary-field");
+  if (!field) return;
+  const responses = form.querySelector("[name=protocol]").value === "responses";
+  field.hidden = !responses;
+  if (!responses) field.querySelector("input").checked = false;
 }
 function connectionInput() {
   const f = sheet.querySelector("#connection-form"),
@@ -1433,7 +1448,7 @@ async function handleAction(el) {
       break;
     case "edit-connection": {
       const c = data.connections.find((c) => c.id === id);
-      connectionForm(c.kind, "custom", c);
+      connectionForm(c.kind, "", c);
       break;
     }
     case "discover-models":
@@ -1852,7 +1867,9 @@ document.addEventListener("change", async (event) => {
       sheet.querySelector("[name=protocol]").value = p.protocol;
       sheet.querySelector("[name=model]").value = "";
       sheet.querySelector("#model-options").innerHTML = "";
+      updateModelProtocolForm();
     }
+    if (el.matches('#connection-form [name="protocol"]')) updateModelProtocolForm();
     if (el.id === "import-settings" && el.files?.[0]) {
       const f = el.files[0];
       if (f.size > 256000)

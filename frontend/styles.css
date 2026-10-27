@@ -751,6 +751,7 @@ input[type="file"] {
   border-top: 1px solid var(--rule);
   cursor: pointer;
 }
+.toggle-row[hidden] { display: none; }
 .toggle-row:first-child {
   border-top: 0;
 }

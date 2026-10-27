@@ -110,6 +110,28 @@ test("signed-in CLI models connect without copying credentials and remain editab
   await expect(page.locator("dialog [name=model]")).toHaveValue("sonnet");
 });
 
+test("Anthropic preset discovers and saves a native API model", async ({ page }) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByRole("button", { name: "Available", exact: true }).click();
+  await page.getByRole("button", { name: "Connect cloud API", exact: true }).click();
+  await page.locator("#provider-preset").selectOption("anthropic");
+  await expect(page.locator("dialog [name=baseUrl]")).toHaveValue("https://api.anthropic.com/v1");
+  await expect(page.locator("dialog [name=protocol]")).toHaveValue("anthropic");
+  await expect(page.locator("#reasoning-summary-field")).toBeHidden();
+  await page.locator("dialog [name=secret]").fill("test-key-only");
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
+  await page.getByRole("button", { name: "Verify & connect", exact: true }).click();
+  const saved = await page.evaluate(() => window.fixtureState.connections.find((c) => c.label === "Anthropic"));
+  expect(saved.config.protocol).toBe("anthropic");
+  expect(saved.config.model).toBe("qwen3:8b");
+  await page.locator(".model-connection").filter({ hasText: "Anthropic" }).getByRole("button", { name: "Manage" }).click();
+  await expect(page.locator("#provider-preset")).toHaveValue("anthropic");
+  await expect(page.locator("dialog [name=protocol]")).toHaveValue("anthropic");
+  await page.locator("dialog [name=protocol]").selectOption("responses");
+  await expect(page.locator("#reasoning-summary-field")).toBeVisible();
+});
+
 test("activity exposes tool evidence safely and keeps expanded inputs during refresh", async ({ page }) => {
   await nativeFixture(page);
   await page.evaluate(() => {
