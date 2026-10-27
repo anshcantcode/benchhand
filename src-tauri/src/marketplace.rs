@@ -729,7 +729,18 @@ pub async fn install_plugin(
             let mut config=prepare_runtime(&state,&m,&values,&directory).await?;
             let connection_id=uuid::Uuid::new_v4().to_string();
             let old_secret=if let Some(previous)=old.as_ref().filter(|o|may_reuse_credentials(o,&source,&m)){if let Some(id)=previous["connectionIds"].as_array().and_then(|v|v.first()).and_then(Value::as_str){crate::connection_secret(&state.connection(id)?)?}else{String::new()}}else{String::new()};
-            let secret=if config["transport"]=="stdio"{let mut env=serde_json::from_str::<Value>(&old_secret).ok().filter(Value::is_object).unwrap_or(json!({}));for item in m["runtime"]["environmentVariables"].as_array().unwrap_or(&vec![]){let name=item["name"].as_str().ok_or("Environment variable needs a name")?;let value=values[name].as_str().or_else(||item["value"].as_str()).or_else(||item["default"].as_str()).or_else(||env[name].as_str());if let Some(v)=value{env[name]=json!(v);}else if item["isRequired"]==true{return Err(format!("Enter {name}"));}}if let Some(extra)=values["environment"].as_object(){for (k,v) in extra{env[k]=v.clone();}}if env.as_object().is_some_and(|m|m.is_empty()){String::new()}else{env.to_string()}}else if m["runtime"]["headers"].as_array().is_some_and(|v|!v.is_empty()){
+            let secret=if config["transport"]=="stdio"{
+                let mut env=serde_json::from_str::<Value>(&old_secret).ok().filter(Value::is_object).unwrap_or(json!({}));
+                for item in m["runtime"]["environmentVariables"].as_array().unwrap_or(&vec![]){
+                    let name=item["name"].as_str().ok_or("Environment variable needs a name")?;
+                    let value=values[name].as_str().or_else(||item["value"].as_str()).or_else(||item["default"].as_str()).or_else(||env[name].as_str());
+                    if let Some(v)=value{env[name]=json!(v);}else if item["isRequired"]==true{return Err(format!("Enter {name}"));}
+                }
+                if let Some(extra)=values["environment"].as_object(){
+                    for (k,v) in extra{env[k]=v.clone();}
+                }
+                if env.as_object().is_some_and(|m|m.is_empty()){String::new()}else{env.to_string()}
+            }else if m["runtime"]["headers"].as_array().is_some_and(|v|!v.is_empty()){
                 let mut headers=serde_json::from_str::<Value>(&old_secret).ok().filter(Value::is_object).unwrap_or(json!({}));
                 for h in m["runtime"]["headers"].as_array().unwrap(){let name=h["name"].as_str().ok_or("A header needs a name")?;let value=if let Some(template)=h["value"].as_str(){Some(substitute(template,&values).or_else(|error|headers[name].as_str().map(str::to_owned).ok_or(error))?)}else{values[name].as_str().map(str::to_string).or_else(||headers[name].as_str().map(str::to_string))};if let Some(v)=value{headers[name]=json!(v);}else if h["isRequired"]==true{return Err(format!("Enter {name}"));}}
                 headers.to_string()

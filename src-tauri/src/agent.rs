@@ -555,7 +555,7 @@ pub(crate) async fn run_with(
                             None => Err("Native desktop context is unavailable".into()),
                         }
                     } else {
-                        execute(&state, &bot.id, &root, tool, &args).await
+                        execute(state, &bot.id, &root, tool, &args).await
                     }
                 }
             } else {
