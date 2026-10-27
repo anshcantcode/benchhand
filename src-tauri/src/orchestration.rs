@@ -451,7 +451,7 @@ fn tick(app: &tauri::AppHandle, state: &AppState) -> Result<(), String> {
 mod tests {
     use super::*;
     fn state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("teammate-routines-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("benchhand-routines-{}", uuid::Uuid::new_v4()));
         let db = crate::open_database(&dir.join("workspace.sqlite3")).unwrap();
         db.execute("INSERT INTO connections(id,kind,label,config,account,verified_at) VALUES('model','model','Test','{}','',0)",[]).unwrap();
         db.execute("UPDATE bots SET provider_id='model'", [])

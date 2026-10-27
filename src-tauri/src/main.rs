@@ -974,7 +974,7 @@ mod tests {
     }
     #[test]
     fn migration_preserves_tasks_and_removes_demo() {
-        let path = std::env::temp_dir().join(format!("teammate-{}.sqlite3", Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("benchhand-{}.sqlite3", Uuid::new_v4()));
         {
             let db = open_database(&path).unwrap();
             db.execute("INSERT INTO tasks(id,title,bot_id,status,created_at,updated_at) VALUES('real','Keep me','research','running',1,1)",[]).unwrap();

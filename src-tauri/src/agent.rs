@@ -772,7 +772,7 @@ mod tests {
             assert!(body.get("tools").is_none());
             json!({"choices":[{"message":{"content":"A browser with a search field."}}]})
         });
-        let dir = std::env::temp_dir().join(format!("teammate-vision-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("benchhand-vision-{}", uuid::Uuid::new_v4()));
         let db = crate::open_database(&dir.join("test.sqlite3")).unwrap();
         let config = json!({"baseUrl":format!("{}/v1",server.url),"model":"vision-fixture","vision":true,"toolMode":"native"});
         db.execute("INSERT INTO connections(id,kind,label,config,account,verified_at) VALUES('vision','model','Vision',?1,'fixture',1)",[config.to_string()]).unwrap();
@@ -879,7 +879,7 @@ mod tests {
                 json!({"jsonrpc":"2.0","id":body["id"],"result":result})
             });
             let dir =
-                std::env::temp_dir().join(format!("teammate-engine-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("benchhand-engine-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&dir).unwrap();
             let db = crate::open_database(&dir.join("test.sqlite3")).unwrap();
             let model = json!({"baseUrl":format!("{}/v1",server.url),"model":"fixture","protocol":"chat","toolMode":"native","hasSecret":false});
@@ -1045,7 +1045,7 @@ mod tests {
     #[test]
     fn workspace_rejects_escape_and_writes_artifacts() {
         let root =
-            std::env::temp_dir().join(format!("teammate-workspace-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("benchhand-workspace-{}", uuid::Uuid::new_v4()));
         assert!(workspace_path(&root, "../private", false).is_err());
         assert!(workspace_path(&root, "/etc/passwd", false).is_err());
         workspace_action(
