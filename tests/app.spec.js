@@ -836,6 +836,7 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Teammates" }).click();
   await page.getByRole("button", { name: "New teammate" }).click();
+  const previewMark = await page.locator(".bot-profile-preview .avatar-links").getAttribute("d");
   await page.getByLabel("Teammate color").fill("#a13b68");
   await expect(page.locator(".bot-profile-preview .avatar")).toHaveAttribute("data-color", "#a13b68");
   expect(await page.locator(".bot-profile-preview .avatar").evaluate((el) => el.style.getPropertyValue("--bot-color"))).toBe("#a13b68");
@@ -848,6 +849,7 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
   await expect(
     page.locator(".teammate-card").filter({ hasText: "Nova" }),
   ).toBeVisible();
+  await expect(page.locator(".teammate-card").filter({ hasText: "Nova" }).locator(".avatar-links")).toHaveAttribute("d", previewMark);
   await page.keyboard.press("Control+k");
   await page.waitForTimeout(100);
   await expect(
