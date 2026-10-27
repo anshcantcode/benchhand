@@ -42,7 +42,7 @@ Open a task's **Live activity**. It records:
 - The selected connection/model, context message count, available tool count and turn number.
 - Model output as the provider publishes it. This is unverified until confirmed by a tool result.
 - Provider-published reasoning or reasoning summaries where available. Private internal thinking and encrypted reasoning payloads are not displayed.
-- Exact proposed tool inputs and returned results, with expandable payloads. Very large results and image bytes are omitted from the activity copy.
+- Tool proposals awaiting approval, approval decisions, inputs actually used, and returned results, with expandable payloads. For an edited approval, compare the proposal with the inputs used; the model also receives the edited inputs in the tool result. Large payloads are truncated in activity, and image bytes are omitted. Proposals appear for approvals created in this version; older histories cannot reconstruct them.
 - Turn timing and token usage when the transport reports usage.
 - Approval, delegation, completion and failure status.
 

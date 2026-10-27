@@ -89,6 +89,8 @@ test("activity exposes tool evidence safely and keeps expanded inputs during ref
     window.fixtureState.tasks[0].status = "running";
     window.fixtureEvents = [
       {kind:"reasoning_summary",title:"Provider reasoning",detail:"Compare the available files first."},
+      {kind:"tool_proposal",title:"Read workspace file",detail:'{"path":"original.txt"}'},
+      {kind:"tool_decision",title:"Read workspace file",detail:"Approved with edited inputs"},
       {kind:"tool_input",title:"Read workspace file",detail:'{"path":"<img src=x onerror=alert(1)>"}'},
       {kind:"tool_result",title:"Read workspace file",detail:'{"text":"report"}'},
       {kind:"model_output",title:"Model output",detail:"Here is the report."}
@@ -99,13 +101,16 @@ test("activity exposes tool evidence safely and keeps expanded inputs during ref
   await page.locator(".task-row").first().click();
   await expect(page.locator(".activity-transcript")).toContainText("Compare the available files first.");
   await expect(page.locator(".activity-transcript img")).toHaveCount(0);
-  await page.getByText("Inspect exact inputs", {exact:true}).click();
+  await page.getByText("Inspect proposed inputs", {exact:true}).click();
+  await expect(page.locator(".trace-tool_proposal")).toContainText("original.txt");
+  await expect(page.locator(".trace-tool_decision")).toContainText("Approved with edited inputs");
+  await page.getByText("Inspect inputs used", {exact:true}).click();
   await page.bringToFront();
   const before = await page.evaluate(() => window.commandCalls.filter((c) => c.command === "bootstrap").length);
   await expect.poll(() => page.evaluate(() => window.commandCalls.filter((c) => c.command === "bootstrap").length)).toBeGreaterThan(before);
   await expect(page.locator('.trace-tool_input details')).toHaveAttribute("open", "");
   await page.getByRole("tab", { name:"Tools", exact:true }).click();
-  await expect(page.locator(".trace-event")).toHaveCount(2);
+  await expect(page.locator(".trace-event")).toHaveCount(4);
   await expect(page.locator(".trace-reasoning_summary")).toHaveCount(0);
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name:"Export transcript" }).click();

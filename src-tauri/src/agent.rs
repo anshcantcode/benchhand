@@ -469,6 +469,14 @@ pub(crate) async fn run_with(
                         edited = true;
                         state.event(id, "You edited the inputs before approving")?;
                     }
+                    let decision = if rejected {
+                        "Rejected"
+                    } else if edited {
+                        "Approved with edited inputs"
+                    } else {
+                        "Approved"
+                    };
+                    trace(state, id, "tool_decision", &label, decision, &secret)?;
                     run.approval_id.clear();
                 }
                 if tool.approval && !approved && !rejected {
@@ -497,6 +505,7 @@ pub(crate) async fn run_with(
                     db.execute("INSERT INTO approvals(id,task_id,title,target,summary,status,created_at,tool_name,arguments) VALUES(?1,?2,?3,?4,?5,'pending',?6,?7,?8)",params![approval_id,id,title,target,format!("{} proposes {}. Review the exact inputs below.",bot.name,tool.action),now(),name,args.to_string()]).map_err(db_error)?;
                     db.execute("UPDATE tasks SET status='paused',waiting_approval=1,continuation=?2,updated_at=?3 WHERE id=?1",params![id,serde_json::to_string(&run).map_err(db_error)?,now()]).map_err(db_error)?;
                     drop(db);
+                    trace(state, id, "tool_proposal", &label, &args.to_string(), &secret)?;
                     state.event(id, "Waiting for your approval")?;
                     emit();
                     return Ok(());
@@ -713,12 +722,13 @@ fn trace(
     if detail.is_empty() {
         return Ok(());
     }
-    let bounded = detail.chars().take(32000).collect::<String>();
+    // Redact before truncating, so a secret split at the limit cannot leak a prefix.
     let clean = if secret.is_empty() {
-        bounded
+        detail.to_owned()
     } else {
-        bounded.replace(secret, "[redacted]")
+        detail.replace(secret, "[redacted]")
     };
+    let clean = clean.chars().take(32000).collect::<String>();
     state.event(
         id,
         &json!({"kind":kind,"title":title,"detail":clean}).to_string(),
@@ -818,13 +828,11 @@ mod tests {
                                 .iter()
                                 .any(|m| m["role"] == "tool"));
                             if decision == "edited" {
-                                assert!(body["messages"].as_array().unwrap().iter().any(|m| {
-                                    m["role"] == "tool"
-                                        && m["content"]
-                                            .as_str()
-                                            .unwrap_or("")
-                                            .contains("inputsUsed")
-                                }));
+                                let result = body["messages"].as_array().unwrap().iter()
+                                    .find(|m| m["role"] == "tool" && m["tool_call_id"] == "external-1")
+                                    .expect("edited call result reaches the next model turn");
+                                let result: Value = serde_json::from_str(result["content"].as_str().unwrap()).unwrap();
+                                assert_eq!(result["inputsUsed"]["message"], "Edited message");
                             }
                             json!({"role":"assistant","content":"The plan is ready. The external action has been handled according to your decision."})
                         }
@@ -867,6 +875,14 @@ mod tests {
                 active: Mutex::new(HashMap::new()),
                 downloads: Mutex::new(HashMap::new()),
             };
+            if decision == "edited" {
+                let secret = "sensitive-key";
+                trace(&state, "test", "redaction_check", "Redaction", &format!("{}{secret}", "x".repeat(31998)), secret).unwrap();
+                let stored: String = state.lock().unwrap().query_row(
+                    "SELECT message FROM task_events WHERE task_id='test' ORDER BY id DESC LIMIT 1", [], |r| r.get(0),
+                ).unwrap();
+                assert!(!stored.contains("sensitive"));
+            }
             run_with(&state, "test", false, None, || {}).await.unwrap();
             let task = state.tasks().unwrap().remove(0);
             let recorded: Vec<Value> = {
@@ -927,6 +943,22 @@ mod tests {
                 .unwrap();
             run_with(&state, "test", true, None, || {}).await.unwrap();
             assert_eq!(state.tasks().unwrap()[0].status, "completed");
+            let events: Vec<Value> = {
+                let db = state.lock().unwrap();
+                let mut query = db.prepare("SELECT message FROM task_events WHERE task_id='test' ORDER BY id").unwrap();
+                let rows = query.query_map([], |r| r.get::<_, String>(0)).unwrap();
+                rows.filter_map(|r| serde_json::from_str(&r.unwrap()).ok()).collect()
+            };
+            let proposal = events.iter().find(|e| e["kind"] == "tool_proposal" && e["detail"].as_str().unwrap_or("").contains("Exactly this message")).unwrap();
+            let proposed: Value = serde_json::from_str(proposal["detail"].as_str().unwrap()).unwrap();
+            assert_eq!(proposed["message"], "Exactly this message");
+            let expected_decision = match decision { "edited" => "Approved with edited inputs", "rejected" => "Rejected", _ => "Approved" };
+            assert!(events.iter().any(|e| e["kind"] == "tool_decision" && e["detail"] == expected_decision));
+            if decision != "rejected" {
+                assert!(events.iter().any(|e| e["kind"] == "tool_input" && e["detail"].as_str().unwrap_or("").contains(sent)));
+            } else {
+                assert!(!events.iter().any(|e| e["kind"] == "tool_input" && e["title"].as_str().unwrap_or("").contains("Fixture tools")));
+            }
             let calls = server
                 .requests
                 .lock()
