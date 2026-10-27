@@ -911,6 +911,20 @@ test("file patch approvals show the exact replacement safely", async ({ page }) 
   await expect(card.locator(".file-change-preview old, .file-change-preview new")).toHaveCount(0);
 });
 
+test("a task waiting for approval explains how to continue", async ({ page }) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    const s = window.fixtureState;
+    Object.assign(s.tasks[0], {status:"paused", waitingApproval:true, output:""});
+    s.approvals.push({id:"patch", taskId:"task-1", title:"Change a local file", target:"Project", status:"pending", createdAt:Date.now()/1000, toolName:"workspace_patch", arguments:{path:"example.txt", old_text:"old", new_text:"new"}});
+  });
+  await page.evaluate(() => refresh());
+  await page.locator("nav").getByRole("button", {name:/Tasks/}).click();
+  await page.locator(".task-row").first().click();
+  await expect(page.locator(".result-panel")).toContainText("Waiting for your decision. Review the action above to continue.");
+  await expect(page.getByRole("button", {name:"Run again"})).toHaveCount(0);
+});
+
 test("approvals can be edited before they run and keep the tool contract", async ({
   page,
 }) => {
