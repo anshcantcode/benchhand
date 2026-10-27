@@ -234,8 +234,20 @@ const pending = () => data.approvals.filter((a) => a.status === "pending");
 const modelName = (b) =>
   data.connections.find((c) => c.id === b?.providerId)?.config.model ||
   "No model";
-const avatar = (b, small = false) =>
-  `<span class="avatar ${small ? "small" : ""}" data-color="${esc(b?.color || defaultAccent)}" aria-hidden="true">${esc((b?.name || "T").slice(0, 1).toUpperCase())}</span>`;
+// A teammate keeps the same mark when renamed. Shapes echo the Benchhand logo.
+const avatarMarks = [
+  { path: "M15 16 24 24l9-8M24 24v10", nodes: [[15, 16], [33, 16], [24, 34]] },
+  { path: "M14 24h20M24 14v20", nodes: [[14, 24], [34, 24], [24, 14], [24, 34]] },
+  { path: "M16 15 24 24l-8 9M24 24l10-9", nodes: [[16, 15], [16, 33], [34, 15]] },
+  { path: "M15 18 24 24l9-6M24 24l9 9", nodes: [[15, 18], [33, 18], [33, 33]] },
+  { path: "M15 24 24 15l9 9-9 9Z", nodes: [[15, 24], [24, 15], [33, 24], [24, 33]] },
+];
+const avatar = (b, small = false) => {
+  const key = String(b?.id || "new-teammate");
+  const hash = [...key].reduce((n, c) => (Math.imul(n, 31) + c.charCodeAt(0)) >>> 0, 0);
+  const mark = avatarMarks[hash % avatarMarks.length];
+  return `<span class="avatar ${small ? "small" : ""}" data-color="${esc(b?.color || defaultAccent)}" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><circle class="avatar-track" cx="24" cy="24" r="19"/><g class="avatar-orbit"><circle cx="24" cy="5" r="2"/></g><path class="avatar-links" d="${mark.path}"/>${mark.nodes.map(([x, y]) => `<circle class="avatar-node" cx="${x}" cy="${y}" r="2.5"/>`).join("")}<circle class="avatar-hub" cx="24" cy="24" r="3"/></svg></span>`;
+};
 const stateOf = (t) => (t.waitingApproval ? "approval" : t.status);
 const status = (t) =>
   t.waitingApproval
@@ -1150,7 +1162,7 @@ function botForm(id = "") {
   const b = data.bots.find((b) => b.id === id);
   editingBot = b;
   openSheet(
-    `${dialogHeading(b ? `Edit ${esc(b.name)}` : "New teammate", "A name, a role, instructions, and the model it runs on.")}<form id="bot-form"><div class="sheet-body"><div class="bot-profile-preview">${avatar(b || { name: "New", color: data.settings.accent })}<span>${b ? esc(b.role || "Teammate") : "Its initial and colour mark its work across the app."}</span></div><div class="two-columns"><label class="field"><span>Name</span><input name="name" maxlength="60" value="${esc(b?.name || "")}" placeholder="Nova" required></label><label class="field"><span>Color</span><input type="color" name="color" value="${esc(b?.color || data.settings.accent)}" aria-label="Teammate color"></label></div><label class="field"><span>Role</span><input name="role" maxlength="100" value="${esc(b?.role || "")}" placeholder="Writing partner"></label><label class="field"><span>Short description</span><textarea name="description" rows="2" maxlength="300" placeholder="What this teammate is best at">${esc(b?.description || "")}</textarea></label><label class="field"><span>Model connection</span><select name="providerId"><option value="">Choose a model connection</option>${data.connections
+    `${dialogHeading(b ? `Edit ${esc(b.name)}` : "New teammate", "A name, a role, instructions, and the model it runs on.")}<form id="bot-form"><div class="sheet-body"><div class="bot-profile-preview">${avatar(b || { color: data.settings.accent })}<span>${b ? esc(b.role || "Teammate") : "Its mark and color make it recognizable across your workspace."}</span></div><div class="two-columns"><label class="field"><span>Name</span><input name="name" maxlength="60" value="${esc(b?.name || "")}" placeholder="Nova" required></label><label class="field"><span>Color</span><input type="color" name="color" value="${esc(b?.color || data.settings.accent)}" aria-label="Teammate color"></label></div><label class="field"><span>Role</span><input name="role" maxlength="100" value="${esc(b?.role || "")}" placeholder="Writing partner"></label><label class="field"><span>Short description</span><textarea name="description" rows="2" maxlength="300" placeholder="What this teammate is best at">${esc(b?.description || "")}</textarea></label><label class="field"><span>Model connection</span><select name="providerId"><option value="">Choose a model connection</option>${data.connections
       .filter((c) => c.kind === "model")
       .map(
         (c) =>
@@ -1785,6 +1797,13 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("input", (event) => {
   const el = event.target;
   if (el.id === "home-prompt") composerDraft = el.value;
+  if (el.matches('#bot-form [name="color"]')) {
+    const preview = sheet.querySelector(".bot-profile-preview .avatar");
+    if (preview) {
+      preview.dataset.color = el.value;
+      colors(sheet);
+    }
+  }
   // Unsaved approval edits survive the live refresh while a task runs.
   if (el.matches("[data-arg]")) {
     const id = el.closest(".approval-card")?.dataset.approvalId;

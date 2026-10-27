@@ -814,6 +814,9 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Teammates" }).click();
   await page.getByRole("button", { name: "New teammate" }).click();
+  await page.getByLabel("Teammate color").fill("#a13b68");
+  await expect(page.locator(".bot-profile-preview .avatar")).toHaveAttribute("data-color", "#a13b68");
+  expect(await page.locator(".bot-profile-preview .avatar").evaluate((el) => el.style.getPropertyValue("--bot-color"))).toBe("#a13b68");
   await page.locator("[name=name]").fill("Nova");
   await page.locator("[name=role]").fill("Writing partner");
   await page
@@ -839,6 +842,28 @@ test("teammates, command palette, and appearance persist", async ({ page }) => {
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator(".shell")).toHaveClass(/compact-sidebar/);
+});
+
+test("teammate marks survive renames and respect reduced motion", async ({ page }) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", { name: "Teammates" }).click();
+  const mark = page.locator(".teammate-card").filter({ hasText: "Scout" }).locator(".avatar");
+  await expect(mark.locator("svg")).toBeVisible();
+  await expect(mark).toHaveText("");
+  const path = await mark.locator(".avatar-links").getAttribute("d");
+  await expect(mark.locator(".avatar-orbit")).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.locator("html").evaluate((el) => { el.dataset.motion = "full"; });
+  await expect(mark.locator(".avatar-orbit")).toHaveCSS("animation-name", "avatar-orbit");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(mark.locator(".avatar-orbit")).toHaveCSS("animation-name", "none");
+  await page.evaluate(() => {
+    window.fixtureState.bots[0].name = "Scout renamed";
+    return window.__TAURI__.core.invoke("save_settings", { settings: window.fixtureState.settings });
+  });
+  await page.reload();
+  await page.locator("nav").getByRole("button", { name: "Teammates" }).click();
+  await expect(page.locator(".teammate-card").filter({ hasText: "Scout renamed" }).locator(".avatar-links")).toHaveAttribute("d", path);
 });
 
 test("approvals show the exact payload and resume only the selected decision", async ({
