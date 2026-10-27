@@ -935,6 +935,7 @@ test("a task waiting for approval explains how to continue", async ({ page }) =>
   await page.evaluate(() => refresh());
   await page.locator("nav").getByRole("button", {name:/Tasks/}).click();
   await page.locator(".task-row").first().click();
+  await expect(page.locator(".task-spotlight")).toContainText("Waiting for your review");
   await expect(page.locator(".result-panel")).toContainText("Waiting for your decision. Review the action above to continue.");
   await expect(page.getByRole("button", {name:"Run again"})).toHaveCount(0);
 });
@@ -1011,6 +1012,8 @@ test("task steps follow the recorded run and the details rail", async ({
   });
   await page.locator("nav").getByRole("button", { name: /Tasks/ }).click();
   await page.locator(".task-row").first().click();
+  await expect(page.locator(".task-main > .steps-panel")).toBeVisible();
+  await expect(page.locator(".steps-panel")).toContainText("updates as work proceeds");
   const steps = page.locator(".steps .step");
   await expect(steps).toHaveCount(3);
   await expect(steps.nth(0)).toContainText("Read workspace file");

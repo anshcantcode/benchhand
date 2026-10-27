@@ -1515,6 +1515,21 @@ input.toggle:checked::after {
   gap: 20px;
   min-width: 0;
 }
+.task-spotlight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 16px var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.task-spotlight.waiting { background: var(--warning-soft); }
+.task-spotlight > .icon { flex: none; color: var(--accent-ink); }
+.task-spotlight.waiting > .icon { color: var(--warning); }
+.task-spotlight span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.task-spotlight small { color: var(--text-2); overflow-wrap: anywhere; }
 .detail-list {
   display: flex;
   flex-direction: column;
@@ -1559,6 +1574,8 @@ input.toggle:checked::after {
   align-items: start;
   padding: 9px var(--pad);
 }
+.task-main .step { padding-top: 14px; padding-bottom: 14px; }
+.task-main .step:not(:last-child)::after { top: 35px; bottom: -12px; }
 .step:not(:last-child)::after {
   content: "";
   position: absolute;

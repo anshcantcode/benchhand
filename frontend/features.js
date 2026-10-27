@@ -213,7 +213,7 @@ async function loadRemoteStatus() {
 function delegationDetail(t) {
   const children = data.tasks.filter((c) => c.parentId === t.id),
     parent = data.tasks.find((p) => p.id === t.parentId);
-  return `${parent ? `<div class="callout">${icon("team")}<span>Delegated by ${esc(parent.botName)} from <button class="text-button" data-action="task-detail" data-id="${esc(parent.id)}">${esc(parent.title)}</button></span></div>` : ""}${t.waitingChild ? `<div class="callout">${icon("team")}<span>Waiting for delegated work. Its result returns to this task automatically.</span></div>` : ""}${children.length ? `<section class="panel delegated-panel">${section("Delegated work", plural(children.length, "task"))}${taskRows(children, true)}</section>` : ""}`;
+  return `${parent ? `<div class="callout">${icon("team")}<span>Delegated by ${esc(parent.botName)} from <button class="text-button" data-action="task-detail" data-id="${esc(parent.id)}">${esc(parent.title)}</button></span></div>` : ""}${children.length ? `<section class="panel delegated-panel">${section("Delegated work", plural(children.length, "task"))}${taskRows(children, true)}</section>` : ""}`;
 }
 async function featureNavigate(next) {
   if (next === "extensions" && !marketLoaded) await loadMarketplace();
