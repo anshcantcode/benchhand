@@ -47,6 +47,7 @@ test("folders connect through the picker, target a task and disconnect without d
 test("Codex models and supported effort are visible, saved and restored", async ({page}) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", {name:"Models",exact:true}).click();
+  await page.getByRole("button", {name:"Available",exact:true}).click();
   await page.getByRole("button", {name:"Connect Codex CLI",exact:true}).click();
   await expect(page.locator("#cli-catalog-status")).toContainText("1 models reported");
   await expect(page.locator("#cli-custom-model")).toBeHidden();
@@ -68,6 +69,7 @@ test("Codex models and supported effort are visible, saved and restored", async 
 test("optional clients remain discoverable and Gemini and Qwen keep client effort defaults", async ({page}) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", {name:"Models",exact:true}).click();
+  await page.getByRole("button", {name:"Available",exact:true}).click();
   await expect(page.locator(".client-row")).toHaveCount(6);
   for(const provider of ["OpenCode","GitHub Copilot CLI","Qwen Code","Gemini CLI"]) {
     await page.getByRole("button", {name:`Connect ${provider}`,exact:true}).click();
@@ -77,9 +79,21 @@ test("optional clients remain discoverable and Gemini and Qwen keep client effor
   }
 });
 
+test("model overview shows assignments and lets a teammate change its model", async ({ page }) => {
+  await nativeFixture(page);
+  await page.locator("nav").getByRole("button", {name:"Models", exact:true}).click();
+  await expect(page.getByRole("heading", {name:"Ready to use", exact:true})).toBeVisible();
+  const assignment = page.locator(".model-assignment").filter({hasText:"Scout"});
+  await expect(assignment).toContainText("qwen3:8b");
+  await assignment.getByRole("button", {name:"Change model for Scout"}).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator("dialog [name=providerId]")).toHaveValue("model-1");
+});
+
 test("signed-in CLI models connect without copying credentials and remain editable", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByRole("button", {name:"Available",exact:true}).click();
   await expect(page.locator(".client-row").first()).toContainText("Installed");
   await page.getByRole("button", { name: "Connect Claude Code", exact: true }).click();
   await expect(page.locator("dialog [name=secret]")).toHaveCount(0);
@@ -345,7 +359,7 @@ async function nativeFixture(page, { setup = true, connected = true, tools = tru
               os: "windows",
               arch: "x86_64",
               threads: 16,
-              version: "0.3.0",
+              version: "0.4.2",
             },
           };
       const persist = () =>
@@ -1042,6 +1056,7 @@ test("model library downloads, reports progress, cancels, and connects installed
     .locator("nav")
     .getByRole("button", { name: "Models" })
     .click();
+  await page.getByRole("button", {name:"Local models",exact:true}).click();
   await expect(page.locator(".catalog-card h3")).toHaveText("qwen3:8b");
   await page
     .getByRole("textbox", { name: "Model to download" })
@@ -1183,11 +1198,13 @@ test("capture the implemented desktop experience", async ({ page }) => {
     .locator("nav")
     .getByRole("button", { name: "Models" })
     .click();
-  await expect(page.locator(".catalog-card h3")).toHaveText("qwen3:8b");
+  await expect(page.getByRole("heading", {name:"Ready to use", exact:true})).toBeVisible();
   await page.screenshot({
     path: "design/screenshots/models.png",
     fullPage: true,
   });
+  await page.getByRole("button", {name:"Local models",exact:true}).click();
+  await expect(page.locator(".catalog-card h3")).toHaveText("qwen3:8b");
   await page
     .locator("nav")
     .getByRole("button", { name: "Marketplace" })

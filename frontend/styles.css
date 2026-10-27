@@ -3199,6 +3199,45 @@ dialog[open] {
   .activity-transcript .section-action { width: 100%; margin: 0; }
 }
 
+/* Model connections first, with a clear path to change each assignment. */
+.model-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
+.model-tab { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 10px 14px; border-bottom: 2px solid transparent; border-radius: var(--radius) var(--radius) 0 0; color: var(--muted); font-weight: 550; }
+.model-tab:hover { color: var(--text); background: var(--raised); }
+.model-tab.active { color: var(--accent-ink); background: var(--accent-soft); border-bottom-color: var(--accent); }
+.model-tab-count { min-width: 22px; text-align: center; border-radius: 999px; background: var(--surface); font-size: 12px; }
+.model-overview { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); align-items: stretch; gap: 20px; }
+.model-overview > .panel { display: flex; flex-direction: column; }
+.model-overview .model-footnote { margin-top: auto; }
+.model-overview .section-heading { flex-wrap: wrap; gap: 8px; }
+.model-overview .section-heading > .subtle { flex-basis: 100%; }
+.model-overview .model-connection { grid-template-columns: 40px minmax(0, 1fr) auto auto; gap: 14px; padding: 20px var(--pad); }
+.model-symbol { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: var(--accent-ink); background: var(--accent-soft); }
+.model-symbol .icon { width: 20px; height: 20px; }
+.model-assignment { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 15px var(--pad); border-top: 1px solid var(--rule); }
+.model-assignment span { min-width: 0; }
+.model-assignment strong, .model-assignment small { display: block; overflow-wrap: anywhere; }
+.model-assignment small { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.model-empty { padding: 20px var(--pad); color: var(--text-2); }
+.model-empty .button { margin-top: 16px; }
+.model-next { padding: 18px var(--pad); border-top: 1px solid var(--rule); }
+.model-next p { margin: 5px 0 10px; color: var(--muted); line-height: 1.5; }
+.model-footnote { display: flex; align-items: flex-start; gap: 8px; padding: 16px var(--pad); border-top: 1px solid var(--rule); color: var(--muted); line-height: 1.5; }
+.model-footnote .icon { flex: none; margin-top: 2px; }
+.available-models { display: grid; gap: 20px; }
+.available-models .section-heading { flex-wrap: wrap; gap: 8px 12px; }
+.available-models .section-heading > .subtle { flex-basis: 100%; order: 3; }
+@media (max-width: 1050px) { .model-overview { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .model-tabs { gap: 2px; }
+  .model-tab { flex: 1 1 auto; justify-content: center; padding: 10px 6px; font-size: 12px; }
+  .available-models .client-name, .available-models .client-actions { grid-column: 1 / -1; }
+  .available-models .client-actions { display: flex; gap: 16px; margin-left: 28px; }
+  .model-overview .model-connection { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; }
+  .model-overview .model-connection > .model-assigned { grid-column: 2; grid-row: 2; }
+  .model-overview .model-connection > .button { grid-column: 3; grid-row: 1 / 3; }
+  .model-symbol { width: 36px; height: 36px; }
+}
+
 /* An empty workspace leads to one real task, before operational dashboards appear. */
 .first-run-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 32px; align-items: start; }
 .first-run-copy { color: var(--text-2); line-height: 1.6; padding: 8px var(--pad) 24px; max-width: 60ch; }

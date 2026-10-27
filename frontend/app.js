@@ -90,7 +90,8 @@ let data = {
   modelHost = "http://127.0.0.1:11434",
   installedModels = [],
   libraryLoaded = false,
-  libraryError = "";
+  libraryError = "",
+  modelTab = "connected";
 let modelClients = [], clientScan = "idle", clientError = "", activityFilter = "all", moreTools = localStorage.getItem("benchhand-more-tools") === "1";
 const clientNames = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", opencode: "OpenCode", copilot: "GitHub Copilot CLI", qwen: "Qwen Code" };
 const clientDocs = {
@@ -914,8 +915,12 @@ const bytesLabel = (bytes) =>
     ? `${(bytes / 1e9).toFixed(1)} GB`
     : `${Math.round(bytes / 1e6)} MB`;
 function modelsView() {
+  const count = data.connections.filter((c) => c.kind === "model").length;
+  return `${heading("Models", "Choose how your teammates work.", `<button class="button primary" data-action="model-tab" data-tab="available">${icon("plus")} Add model</button>`)}<div class="model-tabs" role="group" aria-label="Model views">${[["connected", `Connected <span class="model-tab-count">${count}</span>`], ["available", "Available"], ["local", "Local models"]].map(([id,label]) => `<button class="model-tab ${modelTab === id ? "active" : ""}" aria-pressed="${modelTab === id}" data-action="model-tab" data-tab="${id}">${label}</button>`).join("")}</div>${modelTab === "connected" ? modelHub() : modelTab === "available" ? availableModels() : modelLibrary()}`;
+}
+function modelLibrary() {
   const downloads = data.downloads || [];
-  return `${heading("Models", "Your signed-in tools, local models and cloud APIs in one place.")}<div class="model-hub">${modelHub()}</div><div class="library-heading"><h2>Local model library</h2><button class="text-button" data-action="external" data-url="https://ollama.com/download">Get Ollama ${icon("external")}</button></div>
+  return `<div class="library-heading"><h2>Local model library</h2><button class="text-button" data-action="external" data-url="https://ollama.com/download">Get Ollama ${icon("external")}</button></div>
   <div class="grid one-one"><section class="panel library-runtime">${section("Ollama runtime")}<p class="subtle">Benchhand reads and downloads models through the Ollama server below.</p><div class="runtime-address"><label class="field"><span>Server URL</span><input id="model-host" type="url" value="${esc(modelHost)}" aria-label="Ollama server URL"></label>${button("load-library", "Refresh library", "refresh", "", "button secondary")}</div></section>
   <section class="panel download-panel">${section("Download a model", "", `<button class="text-button" data-action="external" data-url="https://ollama.com/library">Ollama library ${icon("external")}</button>`)}<p class="subtle">Any tag Ollama supports, including Hugging Face GGUF tags. Check the licence and memory needs first.</p><form id="download-form"><input name="model" aria-label="Model to download" placeholder="qwen3:8b or hf.co/owner/model:Q4_K_M" required maxlength="200">${button("", "Download model", "download", 'type="submit"', "button secondary")}</form></section></div>
   ${downloads.length ? `<section class="panel">${section("Downloads")}<div class="download-list">${downloads.map((d) => `<article class="download-row"><div><strong>${esc(d.model)}</strong><small>${esc(d.status)}${d.total ? ` · <span class="num">${bytesLabel(Number(d.completed))} of ${bytesLabel(Number(d.total))}</span>` : ""}</small>${d.total ? `<progress max="${Number(d.total)}" value="${Number(d.completed)}" aria-label="Download progress"></progress>` : ""}</div>${d.state === "downloading" ? button("cancel-download", "Cancel", "close", `data-id="${esc(d.id)}"`, "button quiet small") : d.state === "completed" ? button("connect-installed", "Use model", "plus", `data-model="${esc(d.model)}"`, "button secondary small") : `<span class="pill canceled">${esc(d.state === "canceled" ? "Canceled" : d.state)}</span>`}</article>`).join("")}</div></section>` : ""}
@@ -1101,9 +1106,20 @@ async function scanModelClients() {
   catch (e) { clientScan = "error"; clientError = String(e); }
   render();
 }
+function modelConnectionType(c) {
+  if (c.config.protocol === "cli") return "Signed-in CLI";
+  try {
+    const host = new URL(c.config.baseUrl).hostname;
+    if (host === "localhost" || host === "[::1]" || /^127\./.test(host)) return "Local server";
+  } catch {}
+  return "API connection";
+}
 function modelHub() {
   const connections = data.connections.filter((c) => c.kind === "model");
-  return `<section class="panel model-clients">${section("Use your signed-in tools", "Six CLI connections · installed separately", button("scan-model-clients", clientScan === "scanning" ? "Scanning…" : "Scan this computer", "refresh", clientScan === "scanning" ? "disabled" : "", "button secondary small"))}<p class="model-intro">Choose the tools you already use. Their sign-in stays on this computer; requests use your provider account.</p><div class="client-list">${Object.entries(clientNames).map(([id, name]) => { const found = modelClients.find((c) => c.provider === id); return `<article class="client-row"><span class="client-name">${icon("terminal")}<span><strong>${name}</strong><small>${found?.installed ? esc(found.version) : clientScan === "scanning" ? "Checking installation…" : found ? "Not found automatically · install or set a path" : "Sign in with its CLI, then connect"}</small></span></span><span class="client-status ${found?.installed ? "available" : ""}">${found?.installed ? "Installed" : ""}</span><span class="client-actions"><button class="text-button small" data-action="open-cli-docs" data-provider="${id}">Setup<span class="visually-hidden"> ${name}</span></button><button class="button secondary small" data-action="connect-cli" data-provider="${id}">Connect<span class="visually-hidden"> ${name}</span></button></span></article>`; }).join("")}</div>${clientError ? `<p class="model-intro" role="alert">${esc(clientError)}</p>` : ""}</section><section class="panel connected-models">${section("Ready to assign", plural(connections.length, "model connection"))}${connections.length ? `<div class="model-connections">${connections.map((c) => `<article class="model-connection"><div><strong>${esc(c.label)}</strong><small>${esc(c.config.model)}${c.config.reasoningEffort && c.config.reasoningEffort !== "default" ? ` · ${esc(c.config.reasoningEffort)} effort` : ""} · ${c.config.protocol === "cli" ? "Signed-in CLI" : /localhost|127\.0\.0\.1/.test(c.config.baseUrl || "") ? "Local server" : "API connection"}</small></div><span class="subtle">${plural(data.bots.filter((b) => b.providerId === c.id).length, "teammate")}</span><button class="button quiet small" data-action="edit-connection" data-id="${esc(c.id)}">Manage</button></article>`).join("")}</div>` : `<p class="panel-empty">Connect a CLI, local server, or cloud API below. Then choose it in a teammate’s settings.</p>`}<div class="model-shortcuts"><button class="button secondary" data-action="connect-model" data-preset="ollama">${icon("model")} Connect local server</button><button class="button secondary" data-action="connect-model" data-preset="openai">${icon("globe")} Connect cloud API</button><button class="text-button" data-action="navigate" data-page="team">Assign to a teammate ${icon("arrow")}</button></div></section>`;
+  return `<div class="model-overview"><section class="panel connected-models">${section("Ready to use", "Saved model connections for your teammates.")}${connections.length ? `<div class="model-connections">${connections.map((c) => `<article class="model-connection"><span class="model-symbol">${icon(modelConnectionType(c) === "Signed-in CLI" ? "terminal" : modelConnectionType(c) === "Local server" ? "model" : "globe")}</span><div><strong>${esc(c.label)}</strong><small>${esc(c.config.model)}${c.config.reasoningEffort && c.config.reasoningEffort !== "default" ? ` · ${esc(c.config.reasoningEffort)} effort` : ""} · ${modelConnectionType(c)}</small></div><span class="subtle model-assigned">${plural(data.bots.filter((b) => b.providerId === c.id).length, "teammate")}</span><button class="button secondary small" data-action="edit-connection" data-id="${esc(c.id)}">Manage</button></article>`).join("")}</div>` : `<div class="model-empty"><p>No models connected yet. Choose a signed-in tool, local server, or cloud API to get started.</p><button class="button secondary" data-action="model-tab" data-tab="available">${icon("plus")} Add a model</button></div>`}${connections.length ? `<div class="model-next"><strong>Bring another model</strong><p>Connect a signed-in tool, local server, or cloud provider.</p><button class="text-button" data-action="model-tab" data-tab="available">Explore available models ${icon("arrow")}</button></div>` : ""}<p class="model-footnote">${icon("info")} Usage and availability depend on the selected provider.</p></section><aside class="panel model-assignments">${section("For your teammates", "Choose the default model for each teammate.")}${data.bots.length ? data.bots.map((b) => `<div class="model-assignment">${avatar(b)}<span><strong>${esc(b.name)}</strong><small>${esc(modelName(b))}</small></span><button class="button secondary small" data-action="edit-bot" data-id="${esc(b.id)}" aria-label="Change model for ${esc(b.name)}">Change</button></div>`).join("") : `<p class="panel-empty">Create a teammate to assign a model.</p>`}<p class="model-footnote">${icon("approvals")} API keys saved in Benchhand use your operating system’s credential store.</p></aside></div>`;
+}
+function availableModels() {
+  return `<div class="available-models"><section class="panel model-clients">${section("Use your signed-in tools", "Installed separately · use your existing sign-in", button("scan-model-clients", clientScan === "scanning" ? "Scanning…" : "Scan this computer", "refresh", clientScan === "scanning" ? "disabled" : "", "button secondary small"))}<p class="model-intro">Choose a tool you already use. Requests use its provider account.</p><div class="client-list">${Object.entries(clientNames).map(([id, name]) => { const found = modelClients.find((c) => c.provider === id); return `<article class="client-row"><span class="client-name">${icon("terminal")}<span><strong>${name}</strong><small>${found?.installed ? esc(found.version) : clientScan === "scanning" ? "Checking installation…" : found ? "Not found automatically · install or set a path" : "Sign in with its CLI, then connect"}</small></span></span><span class="client-status ${found?.installed ? "available" : ""}">${found?.installed ? "Installed" : ""}</span><span class="client-actions"><button class="text-button small" data-action="open-cli-docs" data-provider="${id}">Setup<span class="visually-hidden"> ${name}</span></button><button class="button secondary small" data-action="connect-cli" data-provider="${id}">Connect<span class="visually-hidden"> ${name}</span></button></span></article>`; }).join("")}</div>${clientError ? `<p class="model-intro" role="alert">${esc(clientError)}</p>` : ""}</section><section class="panel model-other">${section("Connect another provider", "Use a local server or an API key.")}<div class="model-shortcuts"><button class="button secondary" data-action="connect-model" data-preset="ollama">${icon("model")} Connect local server</button><button class="button secondary" data-action="connect-model" data-preset="openai">${icon("globe")} Connect cloud API</button></div></section></div>`;
 }
 function activityEvent(event) {
   try { const parsed = JSON.parse(event.message); if (parsed && typeof parsed.kind === "string") return { ...event, ...parsed }; } catch {}
@@ -1269,6 +1285,13 @@ async function handleAction(el) {
       break;
     case "scan-model-clients":
       await scanModelClients();
+      break;
+    case "model-tab":
+      if (["connected", "available", "local"].includes(el.dataset.tab)) {
+        modelTab = el.dataset.tab;
+        render();
+        document.querySelector(`.model-tab[data-tab="${modelTab}"]`)?.focus();
+      }
       break;
     case "open-cli-docs":
       await invoke("open_external", {url:clientDocs[sheet.querySelector("#cli-provider")?.value || el.dataset.provider]});
@@ -1700,6 +1723,7 @@ document.addEventListener("submit", async (event) => {
     if (form.id === "connection-form") {
       await invoke("save_connection", { input: connectionInput() });
       closeSheet();
+      if (page === "models") modelTab = "connected";
       await refresh();
       notify("Connected and verified.");
     } else if (form.id === "bot-form") {
