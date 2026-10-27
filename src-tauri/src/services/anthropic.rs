@@ -105,6 +105,150 @@ fn push_tool_result(history: &mut Vec<Value>, result: Value) {
     }
 }
 
+#[derive(Default)]
+struct StreamState {
+    blocks: Vec<Value>,
+    inputs: Vec<String>,
+    closed: Vec<bool>,
+    stop_reason: Option<String>,
+    usage: Value,
+}
+
+impl StreamState {
+    fn record(
+        &mut self,
+        value: &Value,
+        observe: &mut impl FnMut(&str, &str),
+    ) -> Result<bool, String> {
+        match value["type"].as_str().unwrap_or("") {
+            "message_start" => self.usage = value["message"]["usage"].clone(),
+            "content_block_start" => {
+                let index = value["index"]
+                    .as_u64()
+                    .ok_or("Invalid model stream index")? as usize;
+                if index != self.blocks.len() || index >= 32 {
+                    return Err("Invalid model stream index".into());
+                }
+                let block = value["content_block"].clone();
+                if !["text", "tool_use"].contains(&block["type"].as_str().unwrap_or("")) {
+                    return Err("The model returned an unsupported streamed content block".into());
+                }
+                if let Some(text) = block["text"].as_str().filter(|s| !s.is_empty()) {
+                    observe("model_output", text);
+                }
+                self.blocks.push(block);
+                self.inputs.push(String::new());
+                self.closed.push(false);
+            }
+            "content_block_delta" => {
+                let index = value["index"]
+                    .as_u64()
+                    .ok_or("Invalid model stream index")? as usize;
+                let block = self
+                    .blocks
+                    .get_mut(index)
+                    .ok_or("Invalid model stream index")?;
+                if self.closed[index] {
+                    return Err("The model stream changed a completed block".into());
+                }
+                match (block["type"].as_str(), value["delta"]["type"].as_str()) {
+                    (Some("text"), Some("text_delta")) => {
+                        let text = value["delta"]["text"]
+                            .as_str()
+                            .ok_or("Invalid model text")?;
+                        block["text"] =
+                            json!(format!("{}{text}", block["text"].as_str().unwrap_or("")));
+                        observe("model_output", text);
+                    }
+                    (Some("tool_use"), Some("input_json_delta")) => self.inputs[index].push_str(
+                        value["delta"]["partial_json"]
+                            .as_str()
+                            .ok_or("Invalid tool input")?,
+                    ),
+                    _ => return Err("The model returned an unsupported stream update".into()),
+                }
+            }
+            "content_block_stop" => {
+                let index = value["index"]
+                    .as_u64()
+                    .ok_or("Invalid model stream index")? as usize;
+                let block = self
+                    .blocks
+                    .get_mut(index)
+                    .ok_or("Invalid model stream index")?;
+                if self.closed[index] {
+                    return Err("The model stream repeated a completed block".into());
+                }
+                if block["type"] == "tool_use" && !self.inputs[index].is_empty() {
+                    block["input"] = serde_json::from_str(&self.inputs[index])
+                        .map_err(|_| "The model returned incomplete tool input")?;
+                }
+                self.closed[index] = true;
+            }
+            "message_delta" => {
+                if let Some(reason) = value["delta"]["stop_reason"].as_str() {
+                    self.stop_reason = Some(reason.to_owned());
+                }
+                if let Some(usage) = value["usage"].as_object() {
+                    if !self.usage.is_object() {
+                        self.usage = json!({});
+                    }
+                    self.usage.as_object_mut().unwrap().extend(usage.clone());
+                }
+            }
+            "message_stop" => {
+                if self.stop_reason.is_none() || self.closed.iter().any(|closed| !closed) {
+                    return Err("The model stream ended before completion. Retry the task.".into());
+                }
+                if self.usage.is_object() {
+                    observe("usage", &self.usage.to_string());
+                }
+                return Ok(true);
+            }
+            "error" => return Err("The model server reported a streaming error".into()),
+            _ => {}
+        }
+        Ok(false)
+    }
+}
+
+async fn read_stream(
+    mut response: reqwest::Response,
+    observe: &mut impl FnMut(&str, &str),
+) -> Result<Value, String> {
+    let mut buffer = Vec::new();
+    let mut total = 0usize;
+    let mut state = StreamState::default();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "The model stream was interrupted")?
+    {
+        total += chunk.len();
+        if total > 2_000_000 {
+            return Err("The model response exceeded 2 MB".into());
+        }
+        buffer.extend_from_slice(&chunk);
+        while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
+            let line: Vec<_> = buffer.drain(..=end).collect();
+            let line = std::str::from_utf8(&line).map_err(|_| "Invalid model stream encoding")?;
+            if let Some(data) = line.trim().strip_prefix("data:") {
+                if data.trim().is_empty() {
+                    continue;
+                }
+                let value: Value =
+                    serde_json::from_str(data.trim()).map_err(|_| "Invalid model stream record")?;
+                if state.record(&value, observe)? {
+                    return Ok(
+                        json!({"content":state.blocks,"stop_reason":state.stop_reason,"usage":state.usage}),
+                    );
+                }
+            }
+        }
+    }
+    Err("The model stream ended before completion. Retry the task.".into())
+}
+
 pub(super) async fn turn(
     client: &Client,
     base: &str,
@@ -140,8 +284,7 @@ pub(super) async fn turn(
         }
     }
     let mode = config["toolMode"].as_str().unwrap_or("native");
-    let mut body =
-        json!({"model":config["model"],"max_tokens":4096,"system":system,"messages":history});
+    let mut body = json!({"model":config["model"],"max_tokens":4096,"system":system,"messages":history,"stream":true});
     if mode == "native" && !tools.is_empty() {
         body["tools"] = json!(tools.iter().map(|tool| json!({"name":tool["function"]["name"],"description":tool["function"]["description"],"input_schema":tool["function"]["parameters"]})).collect::<Vec<_>>());
     }
@@ -149,7 +292,17 @@ pub(super) async fn turn(
         .send()
         .await
         .map_err(|_| "Could not reach the model server")?;
-    let value = body_json(response, token).await?;
+    let streaming = response.status().is_success()
+        && response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.contains("text/event-stream"));
+    let value = if streaming {
+        read_stream(response, observe).await?
+    } else {
+        body_json(response, token).await?
+    };
     if value["stop_reason"] == "max_tokens" {
         return Err("The model response exceeded its output limit. Try a smaller task.".into());
     }
@@ -181,8 +334,10 @@ pub(super) async fn turn(
         return Err("The model requested too many simultaneous tool calls".into());
     }
     let text = texts.join("\n");
-    observe("model_output", &text);
-    if value["usage"].is_object() {
+    if !streaming {
+        observe("model_output", &text);
+    }
+    if !streaming && value["usage"].is_object() {
         observe("usage", &value["usage"].to_string());
     }
     if mode == "structured" {
@@ -198,6 +353,119 @@ pub(super) async fn turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn streamed_text_and_tool_input_are_reassembled_only_after_completion() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap();
+        let worker = std::thread::spawn(move || {
+            let records = vec![
+                json!({"type":"message_start","message":{"usage":{"input_tokens":3}}}),
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello café"}}),
+                json!({"type":"content_block_stop","index":0}),
+                json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tool-1","name":"workspace_read","input":{}}}),
+                json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}),
+                json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"notes.txt\"}"}}),
+                json!({"type":"content_block_stop","index":1}),
+                json!({"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}),
+                json!({"type":"message_stop"}),
+            ];
+            let body = records
+                .iter()
+                .map(|v| format!("data: {v}\n\n"))
+                .collect::<String>();
+            let header =
+                tiny_http::Header::from_bytes("Content-Type", "text/event-stream").unwrap();
+            server
+                .recv()
+                .unwrap()
+                .respond(tiny_http::Response::from_string(body).with_header(header))
+                .unwrap();
+        });
+        let config = json!({"model":"test","toolMode":"native"});
+        let messages = vec![json!({"role":"user","content":"Read it."})];
+        let mut observed = Vec::new();
+        let result = turn(
+            &Client::new(),
+            &format!("http://{address}"),
+            "test-key",
+            &config,
+            &messages,
+            &[],
+            &mut |kind, text| observed.push((kind.to_owned(), text.to_owned())),
+        )
+        .await
+        .unwrap();
+        worker.join().unwrap();
+        assert_eq!(result["content"], "Hello café");
+        assert_eq!(
+            result["tool_calls"][0]["function"]["arguments"],
+            r#"{"path":"notes.txt"}"#
+        );
+        assert_eq!(
+            observed
+                .iter()
+                .filter(|(kind, _)| kind == "model_output")
+                .count(),
+            1
+        );
+        assert_eq!(observed.last().unwrap().0, "usage");
+    }
+
+    #[test]
+    fn incomplete_tool_stream_cannot_finish() {
+        let mut state = StreamState::default();
+        let mut observe = |_: &str, _: &str| {};
+        state.record(&json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"x","name":"write","input":{}}}), &mut observe).unwrap();
+        state.record(&json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}), &mut observe).unwrap();
+        assert!(state
+            .record(
+                &json!({"type":"content_block_stop","index":0}),
+                &mut observe
+            )
+            .is_err());
+        state
+            .record(
+                &json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}}),
+                &mut observe,
+            )
+            .unwrap();
+        assert!(state
+            .record(&json!({"type":"message_stop"}), &mut observe)
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_never_returns_a_tool_call() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap();
+        let worker = std::thread::spawn(move || {
+            let body = format!(
+                "data: {}\n\n",
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"x","name":"write","input":{}}})
+            );
+            let header =
+                tiny_http::Header::from_bytes("Content-Type", "text/event-stream").unwrap();
+            server
+                .recv()
+                .unwrap()
+                .respond(tiny_http::Response::from_string(body).with_header(header))
+                .unwrap();
+        });
+        let result = turn(
+            &Client::new(),
+            &format!("http://{address}"),
+            "test-key",
+            &json!({"model":"test"}),
+            &[json!({"role":"user","content":"Help"})],
+            &[],
+            &mut |_, _| {},
+        )
+        .await;
+        worker.join().unwrap();
+        assert!(result.unwrap_err().contains("ended before completion"));
+    }
 
     #[test]
     fn all_tool_results_precede_images_when_calls_run_together() {
