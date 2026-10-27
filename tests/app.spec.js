@@ -833,6 +833,7 @@ test("connection failures are actionable and never become saved connections", as
 });
 
 test("teammates, command palette, and appearance persist", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(crypto, "randomUUID", { value: undefined }));
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", { name: "Teammates" }).click();
   await page.getByRole("button", { name: "New teammate" }).click();
