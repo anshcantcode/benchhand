@@ -125,7 +125,7 @@ jobs:
           Model weights, model runtimes such as Ollama, and optional tool servers are installed separately. `SHA256SUMS.txt` lists the package hashes. See the [user guide](https://github.com/anshcantcode/benchhand/blob/main/docs/USER_GUIDE.md) to get started.
           EOF
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Benchhand ${{ github.ref_name }}
           body_path: notes.md
