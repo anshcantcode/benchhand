@@ -727,7 +727,7 @@ function approvalCard(a) {
   const t = data.tasks.find((t) => t.id === a.taskId),
     editing = editingApproval === a.id,
     id = `data-id="${esc(a.id)}"`;
-  return `<article class="approval-card ${editing ? "editing" : ""}"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t && t.id !== selectedTask ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">${editing ? "Editing" : "Needs approval"}</span></header>${editing ? approvalEditor(a) : `${approvalPreview(a)}<details class="raw-inputs"><summary>Exact inputs</summary><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre></details>`}<div class="approval-actions">${editing ? `<button class="button secondary" data-action="edit-approval" ${id}>Cancel edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved" data-edited="true">${icon("check")} Approve edited action</button>` : `<button class="button secondary" data-action="decide" ${id} data-decision="rejected">Reject action</button><button class="button secondary" data-action="edit-approval" ${id}>${icon("edit")} Edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved">${icon("check")} Approve & continue</button>`}</div></article>`;
+  return `<article class="approval-card ${editing ? "editing" : ""}" tabindex="0" role="group" aria-label="${esc(a.title)}"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t && t.id !== selectedTask ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">${editing ? "Editing" : "Needs approval"}</span></header>${editing ? approvalEditor(a) : `${approvalPreview(a)}<details class="raw-inputs"><summary>Exact inputs</summary><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre></details>`}<div class="approval-actions">${editing ? `<button class="button secondary" data-action="edit-approval" ${id}>Cancel edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved" data-edited="true">${icon("check")} Approve edited action <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>` : `<button class="button secondary" data-action="decide" ${id} data-decision="rejected">Reject action</button><button class="button secondary" data-action="edit-approval" ${id}>${icon("edit")} Edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved">${icon("check")} Approve & continue <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>`}</div></article>`;
 }
 function approvalsView() {
   const done = data.approvals.filter((a) => a.status !== "pending");
@@ -1802,6 +1802,26 @@ document.addEventListener("change", async (event) => {
 });
 document.addEventListener("keydown", (e) => {
   const typing = e.target.matches("input,textarea,select,[contenteditable]");
+  const card = e.target.closest(".approval-card");
+  if (card && !sheet.open && !setupOpen && !e.repeat && !e.isComposing) {
+    const approve = card.querySelector('[data-action="decide"][data-decision="approved"]');
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === "Enter" &&
+        (e.target === card || e.target === approve) && approve && !approve.disabled) {
+      e.preventDefault();
+      approve.click();
+      return;
+    }
+    if (e.key === "Escape" && card.classList.contains("editing")) {
+      e.preventDefault();
+      const id = card.querySelector('[data-action="edit-approval"]').dataset.id;
+      editingApproval = "";
+      approvalDraft = {};
+      render();
+      [...document.querySelectorAll(".approval-card")].find((item) =>
+        item.querySelector('[data-action="edit-approval"]')?.dataset.id === id)?.focus();
+      return;
+    }
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     if (sheet.open) closeSheet();

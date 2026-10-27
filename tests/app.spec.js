@@ -867,6 +867,37 @@ test("approvals show the exact payload and resume only the selected decision", a
   await expect(page.getByText("You’re all clear")).toBeVisible();
 });
 
+test("approval shortcuts act only on the focused card and protect edited fields", async ({ page }) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    const s = window.fixtureState;
+    s.approvals.push(...[1, 2].map(i => ({
+      id: `approval-${i}`, taskId: "task-1", title: `Action ${i}`, target: "Fixture",
+      status: "pending", createdAt: Date.now() / 1000, toolName: "fixture",
+      arguments: { message: `Original ${i}` }
+    })));
+  });
+  await page.evaluate(() => refresh());
+  await page.locator("nav").getByRole("button", {name:/Approvals/}).click();
+  const first = page.getByRole("group", {name:"Action 1"});
+  const second = page.getByRole("group", {name:"Action 2"});
+  await expect(first).toContainText("Ctrl+Enter");
+  await first.getByRole("button", {name:"Edit", exact:true}).click();
+  const field = first.getByRole("textbox", {name:"Message"});
+  await field.fill("Unsaved edit");
+  await field.press("Control+Enter");
+  expect(await page.evaluate(() => window.fixtureState.approvals.map(a => a.status))).toEqual(["pending", "pending"]);
+  await field.press("Escape");
+  await expect(first).not.toHaveClass(/editing/);
+  await expect(first).toBeFocused();
+  await second.focus();
+  await second.press("Control+Enter");
+  await expect.poll(() => page.evaluate(() => window.fixtureState.approvals.map(a => a.status))).toEqual(["pending", "approved"]);
+  await first.getByRole("button", {name:"Reject action"}).focus();
+  await page.keyboard.press("Control+Enter");
+  expect(await page.evaluate(() => window.fixtureState.approvals[0].status)).toBe("pending");
+});
+
 test("approvals can be edited before they run and keep the tool contract", async ({
   page,
 }) => {
