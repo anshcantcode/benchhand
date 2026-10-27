@@ -258,6 +258,18 @@ fn workspace_action(root: &Path, action: &str, args: &Value) -> Result<Value, St
             }
             let temp = target.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
             fs::write(&temp, content).map_err(db_error)?;
+            #[cfg(unix)]
+            match fs::metadata(&target) {
+                Ok(metadata) => if let Err(error) = fs::set_permissions(&temp, metadata.permissions()) {
+                    let _ = fs::remove_file(&temp);
+                    return Err(db_error(error));
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(error) => {
+                    let _ = fs::remove_file(&temp);
+                    return Err(db_error(error));
+                }
+            }
             if let Err(error) = fs::rename(&temp, &target) {
                 let _ = fs::remove_file(temp);
                 return Err(db_error(error));
@@ -1069,6 +1081,20 @@ mod tests {
         assert!(workspace_action(&root, "workspace_patch", &json!({"path":"notes/overlap.txt","old_text":"aa","new_text":"b"})).is_err());
         assert_eq!(fs::read_to_string(root.join("notes/overlap.txt")).unwrap(), "aaa");
         assert_eq!(fs::read_to_string(root.join("notes/result.md")).unwrap(), "A reviewed result");
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn editing_a_file_preserves_its_executable_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("benchhand-permissions-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let script = root.join("script.sh");
+        fs::write(&script, "before").unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        workspace_action(&root, "workspace_patch", &json!({"path":"script.sh","old_text":"before","new_text":"after"})).unwrap();
+        assert_eq!(fs::metadata(&script).unwrap().permissions().mode() & 0o777, 0o755);
+        assert_eq!(fs::read_to_string(&script).unwrap(), "after");
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
