@@ -10,6 +10,8 @@ mod orchestration;
 mod remote;
 mod services;
 mod stdio;
+mod terminal_bridge;
+mod terminal_shared;
 #[cfg(test)]
 mod test_support;
 
@@ -373,7 +375,7 @@ impl AppState {
     }
 }
 fn secret_entry(id: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new("dev.localteam.teammate", id)
+    keyring::Entry::new(terminal_shared::SERVICE, id)
         .map_err(|_| "Your operating system credential store is unavailable.".into())
 }
 fn read_secret(id: &str) -> Result<String, String> {
@@ -839,10 +841,12 @@ fn open_external(url: String) -> Result<(), String> {
 fn main() {
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     if std::env::var_os("TEAMMATE_DATA_DIR").is_none() {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if !args.iter().any(|arg| arg == "--terminal-background") {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
             }
         }));
     }
@@ -881,6 +885,9 @@ fn main() {
             });
             computer::reset(&app.state::<AppState>()).map_err(std::io::Error::other)?;
             desktop::setup(app)?;
+            if let Err(e) = terminal_bridge::start(app.handle()) {
+                eprintln!("Terminal access could not start: {e}");
+            }
             orchestration::start(app.handle().clone());
             if let Err(e) = remote::start(app.handle()) {
                 eprintln!("Phone access could not start: {e}");
@@ -939,6 +946,7 @@ fn main() {
             if matches!(event, tauri::RunEvent::Exit) {
                 desktop::stop(app);
                 remote::stop();
+                terminal_bridge::stop();
                 if let Ok(active) = app.state::<AppState>().active.lock() {
                     for h in active.values() {
                         h.abort();

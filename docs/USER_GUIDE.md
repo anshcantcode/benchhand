@@ -19,6 +19,21 @@ Open **Folders → Add a folder**, choose an assistant, then select a project or
 
 One folder is attached per assistant. Stop its running/paused tasks before changing or disconnecting the folder. Disconnecting leaves every file where it is. Tasks record the folder used for their run. Text files are limited to 1 MB and directory lists to 100 entries. This does not grant shell execution or sandbox independent MCP/native tools. Relevant file contents go to the model you choose, including a cloud provider or signed-in cloud CLI when selected.
 
+### Use the terminal
+
+The desktop package also includes `benchhand-terminal` (`benchhand-terminal.exe` on Windows). Run it from a terminal to open an interactive session, or pass a command directly:
+
+```text
+benchhand-terminal team
+benchhand-terminal run research Summarize the open work in my folder
+benchhand-terminal approvals
+benchhand-terminal approve <approval-id>
+```
+
+Use `team` to find teammate IDs and their connected models, `tasks` to see recent work, and `show <task-id>` to read a result. Run `help` for all commands. Review the exact inputs with `approvals` before deciding; `reject <approval-id>` declines an action. Tasks and approvals are shared with the desktop workspace. Leaving the terminal does not cancel a running task.
+
+The terminal starts the desktop workspace in the background if needed; a desktop session and unlocked operating system credential store are required. If the terminal executable was moved away from the desktop executable, open Benchhand first or set `BENCHHAND_APP` to the desktop executable's absolute path. When using the optional `TEAMMATE_DATA_DIR` override, open Benchhand with the same override first. On Windows, invoke the executable by its full install path or add its folder to PATH.
+
 ### GitHub and Slack
 
 GitHub uses a personal access token. Grant metadata and issues read access for the repositories you want to use; add issues write access if you want approved issue creation. Existing token permissions determine what is accessible.

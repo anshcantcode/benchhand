@@ -73,8 +73,9 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
         if tray_available
-            && std::env::args().any(|a| a == "--background")
-            && app.state::<AppState>().settings()?["runInBackground"] == true
+            && (std::env::args().any(|a| a == "--terminal-background")
+                || (std::env::args().any(|a| a == "--background")
+                    && app.state::<AppState>().settings()?["runInBackground"] == true))
         {
             w.hide()?;
         }

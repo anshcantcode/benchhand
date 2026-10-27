@@ -230,7 +230,7 @@ type Reply = Result<Value, (u16, String)>;
 fn bad(e: String) -> (u16, String) {
     (400, e)
 }
-fn route(app: &tauri::AppHandle, method: &str, parts: &[&str], input: &Value) -> Reply {
+pub(crate) fn route(app: &tauri::AppHandle, method: &str, parts: &[&str], input: &Value) -> Reply {
     let state = app.state::<AppState>();
     match (method, parts) {
         ("GET", ["v1", "summary"]) => summary(&state).map_err(|e| (500, e)),

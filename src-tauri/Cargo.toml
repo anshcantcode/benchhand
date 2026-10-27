@@ -5,6 +5,11 @@ description = "A local-first team of AI teammates"
 authors = ["Benchhand contributors"]
 edition = "2021"
 license = "Apache-2.0"
+default-run = "benchhand"
+
+[[bin]]
+name = "benchhand-terminal"
+path = "src/bin/benchhand-terminal.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
