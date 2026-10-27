@@ -2,12 +2,14 @@
 
 How to set up Benchhand, connect your accounts and tools, and what to expect from this release. For building from source, see the [README](../README.md#build-from-source).
 
+This guide follows the current development branch. Some features, including the terminal and native Anthropic API connection, are newer than the v0.4.2 pre-release packages.
+
 ## First run
 
 1. Install the package for your OS. On Windows the app uses WebView2; the installer can provision the runtime. On Linux use a desktop session with WebKitGTK 4.1 and a working Secret Service keyring.
 2. Choose the model tool you already use. Personalization is optional; the app opens directly to a short start screen.
 3. For an existing signed-in Claude Code, Codex CLI or Gemini CLI, connect it in **Models**. For local intelligence, start [Ollama](https://ollama.com/download) or LM Studio. Use **Models** to download an Ollama model, then **Use this model**. For cloud intelligence, open **Models → Connect cloud API** and supply the provider’s API base URL and key.
-4. Choose **Discover**, select a model, and verify the connection. The first model is assigned to teammates that do not already have one.
+4. For an API or local server, choose **Discover**, select a model, and verify the connection. For a signed-in CLI, choose a model and check the installation. The first model is assigned to teammates that do not already have one.
 5. Give a teammate a task. Its page shows each step of the run, a details panel and the full activity log. Results can be copied or exported as Markdown.
 6. Decide in **Approvals**. Each action is shown as it will appear (a Slack message, a GitHub issue, a click or keystroke), with the exact inputs one click away. Choose **Edit** to change values before approving. The edited inputs are what runs, and the teammate is told what changed.
 

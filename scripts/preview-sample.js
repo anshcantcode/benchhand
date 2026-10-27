@@ -28,7 +28,7 @@
       { id: "t-support", title: "Summarise yesterday’s #support thread", description: "Decisions, blockers and owners.", botId: "relay", botName: "Relay", status: "failed", createdAt: ago(190), updatedAt: ago(186), output: "", error: "Slack returned not_in_channel for #support. Invite the app to the channel, then run again.", waitingApproval: false },
       { id: "t-brief", title: "Morning research brief", description: "Local model releases and MCP news since yesterday.", botId: "research", botName: "Scout", status: "completed", createdAt: ago(240), updatedAt: ago(228), output: "## Since yesterday\n\n- Two new GGUF builds of qwen3 landed on Hugging Face.\n- The MCP registry added 14 servers.\n\n| Source | Items |\n| --- | ---: |\n| Hugging Face | 6 |\n| MCP Registry | 14 |\n", error: "", waitingApproval: false },
       { id: "t-plan", title: "A clearer plan for this week", description: "Help prioritize the work.", botId: "operations", botName: "Atlas", status: "completed", createdAt: ago(320), updatedAt: ago(301), output: "## Your next three moves\n\n1. Finish the launch brief.\n2. Review the open issues.\n3. Make room for deep work.\n", error: "", waitingApproval: false },
-      { id: "t-models", title: "Compare local models for structured actions", description: "qwen3:8b against llama3.2:3b on the JSON adapter.", botId: "research", botName: "Scout", status: "completed", createdAt: ago(610), updatedAt: ago(571), output: "## Result\n\nqwen3:8b followed the action schema in 19 of 20 runs; llama3.2:3b in 12 of 20.", error: "", waitingApproval: false },
+      { id: "t-models", title: "Compare local models for structured actions", description: "qwen3:8b against llama3.2:3b on the JSON adapter.", botId: "research", botName: "Scout", status: "completed", createdAt: ago(610), updatedAt: ago(571), output: "## Example comparison\n\nThis is illustrative sample output, not a measured benchmark.", error: "", waitingApproval: false },
       { id: "t-notes", title: "Draft release notes for 0.3.1", description: "From merged pull requests since 0.3.0.", botId: "code", botName: "Forge", status: "queued", createdAt: ago(700), updatedAt: ago(700), output: "", error: "", waitingApproval: false },
       { id: "t-old", title: "Rename the Slack digest channel", description: "", botId: "relay", botName: "Relay", status: "canceled", createdAt: ago(1300), updatedAt: ago(1290), output: "", error: "", waitingApproval: false },
     ],
@@ -54,7 +54,7 @@
     ],
     pluginSources: [{ id: "featured", label: "Featured tools" }, { id: "registry", label: "Official MCP Registry" }],
     downloads: [{ id: "d1", model: "llama3.2:3b", state: "downloading", status: "Pulling model layers", completed: 1240000000, total: 2020000000 }],
-    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.1" },
+    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.2" },
   };
   // Event text matches what the runtime records, so the Steps list is derived the same way as in the app.
   const run = (start, ...lines) => [{ message: "Task created", createdAt: ago(start + 0.2) }, { message: "Run started", createdAt: ago(start) }, ...lines.map(([m, at]) => ({ message: m, createdAt: ago(at) }))];

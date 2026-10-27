@@ -4,6 +4,25 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- `benchhand-terminal`, a console companion that shares the desktop workspace, task engine and approvals. It can list teammates and tasks, run work, follow activity and review decisions.
+- Native Anthropic Messages API connections with model discovery, image input, streamed output and tool calls through the existing approval flow.
+- Exact-match edits for attached workspace files, reviewed before application and rejected when the original text is no longer unique.
+- Animated Benchhand teammate marks with per-teammate colors and reduced-motion support.
+
+### Changed
+
+- Redesigned model connections, task progress and approval review. Approval drafts survive switching between actions, and keyboard approval is limited to the focused review.
+- Tool activity records proposed, edited and executed inputs, with secrets redacted before truncation. Long terminal activity logs are paginated.
+- Marketplace and Routines can be chosen as the startup page. Rust lint checks run in desktop CI.
+
+### Limits
+
+- These changes are on the development branch and are not included in the v0.4.2 release packages. The terminal requires a desktop session and an unlocked operating system credential store.
+- Anthropic's native API adapter has automated mock coverage but has not been tested with a live API key in this development environment.
+
+
 ## [0.4.2] - 2026-10-21
 
 ### Added
