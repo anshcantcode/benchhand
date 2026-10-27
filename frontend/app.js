@@ -73,7 +73,9 @@ let data = {
   selectedTask = "",
   events = [],
   editingApproval = "",
-  approvalDraft = {},
+  approvalDrafts = {},
+  selectedApproval = "",
+  approvalTab = "waiting",
   taskFilter = "all",
   taskSearch = "",
   connectionFilter = "all",
@@ -697,7 +699,7 @@ function approvalEditor(a) {
   return `<div class="approval-editor">${Object.entries(a.arguments || {})
     .map(([k, v], i) => {
       // The control follows the original value's type, and drafts keep typing across refreshes.
-      const draft = approvalDraft[k],
+      const draft = approvalDrafts[a.id]?.[k],
         attrs = `id="approval-arg-${i}" data-arg="${esc(k)}"`,
         label = esc(fieldName(k));
       if (typeof v === "boolean")
@@ -736,21 +738,22 @@ function approvalCard(a) {
   const t = data.tasks.find((t) => t.id === a.taskId),
     editing = editingApproval === a.id,
     id = `data-id="${esc(a.id)}"`;
-  return `<article class="approval-card ${editing ? "editing" : ""}" tabindex="0" role="group" aria-label="${esc(a.title)}"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t && t.id !== selectedTask ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">${editing ? "Editing" : "Needs approval"}</span></header>${editing ? approvalEditor(a) : `${approvalPreview(a)}<details class="raw-inputs"><summary>Exact inputs</summary><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre></details>`}<div class="approval-actions">${editing ? `<button class="button secondary" data-action="edit-approval" ${id}>Cancel edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved" data-edited="true">${icon("check")} Approve edited action <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>` : `<button class="button secondary" data-action="decide" ${id} data-decision="rejected">Reject action</button><button class="button secondary" data-action="edit-approval" ${id}>${icon("edit")} Edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved">${icon("check")} Approve & continue <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>`}</div></article>`;
+  return `<article class="approval-card ${editing ? "editing" : ""}" data-approval-id="${esc(a.id)}" tabindex="0" role="group" aria-label="${esc(a.title)}"><header><div><h3>${esc(a.title)}</h3><p>${esc(t?.botName || "Teammate")} · ${esc(a.target)} · ${relative(a.createdAt)}${t && t.id !== selectedTask ? ` · <button class="text-button" data-action="task-detail" data-id="${esc(t.id)}">${esc(t.title)}</button>` : ""}</p></div><span class="pill approval">${editing ? "Editing" : "Needs approval"}</span></header>${editing ? approvalEditor(a) : `${approvalPreview(a)}<details class="raw-inputs"><summary>Exact inputs</summary><pre class="approval-payload">${esc(JSON.stringify(a.arguments, null, 2))}</pre></details>`}<div class="approval-actions">${editing ? `<button class="button secondary" data-action="edit-approval" ${id}>Cancel edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved" data-edited="true">${icon("check")} Approve edited action <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>` : `<button class="button secondary" data-action="decide" ${id} data-decision="rejected">Reject action</button><button class="button secondary" data-action="edit-approval" ${id}>${icon("edit")} Edit</button><button class="button primary" data-action="decide" ${id} data-decision="approved">${icon("check")} Approve & continue <span class="shortcut-hint" aria-hidden="true">Ctrl+Enter</span></button>`}</div></article>`;
 }
 function approvalsView() {
-  const done = data.approvals.filter((a) => a.status !== "pending");
-  return `${heading("Approvals", pending().length ? `${plural(pending().length, "action")} waiting · nothing runs until you decide` : "Sends, posts, issues and imported tool calls stop here for your decision")}<div class="approval-grid">${pending().length ? pending().map(approvalCard).join("") : `<section class="panel">${empty("approvals", "You’re all clear", "Nothing is waiting for your approval.")}</section>`}</div>${
-    done.length
-      ? `<section class="panel">${section("Previous decisions", plural(done.length, "decision"))}<div class="list-header decision-header" aria-hidden="true"><span>Action</span><span>Target</span><span>Decision</span><span class="num">When</span></div>${done
-          .slice(0, 10)
-          .map(
-            (a) =>
-              `<div class="decision-row"><strong>${esc(a.title)}</strong><span class="subtle">${esc(a.target)}</span><span class="pill ${a.status === "approved" ? "completed" : "canceled"}">${a.status === "approved" ? (a.edited ? "Approved, edited" : "Approved") : "Rejected"}</span><time class="num">${relative(a.createdAt)}</time></div>`,
-          )
-          .join("")}</section>`
-      : ""
-  }`;
+  const waiting = pending(), done = data.approvals.filter((a) => a.status !== "pending");
+  const active = waiting.find((a) => a.id === selectedApproval) || waiting[0];
+  if (active) selectedApproval = active.id;
+  const tabs = `<div class="approval-tabs" role="group" aria-label="Approval views">${[["waiting", `Waiting${waiting.length ? ` · ${waiting.length}` : ""}`], ["history", "History"]].map(([id,label]) => `<button class="approval-tab ${approvalTab === id ? "active" : ""}" aria-pressed="${approvalTab === id}" data-action="approval-tab" data-tab="${id}">${label}</button>`).join("")}</div>`;
+  const history = `<section class="panel">${section("Recent decisions", plural(done.length, "decision"))}${done.length ? `<div class="list-header decision-header" aria-hidden="true"><span>Action</span><span>Target</span><span>Decision</span><span class="num">When</span></div>${done.map((a) => `<div class="decision-row"><strong>${esc(a.title)}</strong><span class="subtle">${esc(a.target)}</span><span class="pill ${a.status === "approved" ? "completed" : "canceled"}">${a.status === "approved" ? (a.edited ? "Approved, edited" : "Approved") : "Rejected"}</span><time class="num">${relative(a.createdAt)}</time></div>`).join("")}` : empty("approvals", "No decisions yet", "Your recent approvals and rejections will appear here.")}</section>`;
+  const list = waiting.map((a) => {
+    const task = data.tasks.find((t) => t.id === a.taskId), tool = a.toolName || "";
+    const symbol = tool.startsWith("slack_") ? "slack" : tool.startsWith("github_") ? "github" : tool.startsWith("workspace_") ? "file" : tool.startsWith("computer_") ? "computer" : "connections";
+    return `<button class="approval-list-item ${a.id === active?.id ? "active" : ""}" data-action="select-approval" data-id="${esc(a.id)}" aria-pressed="${a.id === active?.id}"><span class="approval-list-icon">${icon(symbol)}</span><span><strong>${esc(a.title)}</strong><small>${esc(task?.botName || "Teammate")} · ${relative(a.createdAt)}${Object.keys(approvalDrafts[a.id] || {}).length ? " · Draft edit" : ""}</small></span>${icon("chevron")}</button>`;
+  }).join("");
+  const task = active && data.tasks.find((t) => t.id === active.taskId);
+  const review = active ? `<div class="approval-workspace"><aside class="panel approval-list">${section("Waiting for your review", plural(waiting.length, "action"))}${list}<p class="approval-guidance">${icon("info")}<span>Review the destination and exact inputs. Imported servers run with your account permissions.</span></p></aside><section class="review-detail"><h2>Review action</h2>${approvalCard(active)}${task ? `<div class="panel approval-context">${section("From this task")}<div><strong>${esc(task.title)}</strong>${task.description ? `<p>${esc(task.description)}</p>` : ""}<button class="text-button" data-action="task-detail" data-id="${esc(task.id)}">Open task ${icon("arrow")}</button></div></div>` : ""}</section></div>` : `<section class="panel">${empty("approvals", "You’re all clear", "Nothing is waiting for your approval.")}</section>`;
+  return `${heading("Approvals", waiting.length ? `${plural(waiting.length, "action")} waiting for your review` : "Actions that need your review appear here", tabs)}${approvalTab === "history" ? history : review}`;
 }
 function themeChoices() {
   return `<div class="theme-choices" role="group" aria-label="Theme">${[
@@ -909,6 +912,7 @@ async function refresh() {
   if (firstLoad) featureNavigate(page).catch((e) => notify(e, true));
 }
 function navigate(next) {
+  if (next === "approvals" && page !== "approvals") approvalTab = "waiting";
   page = next;
   selectedTask = "";
   taskSearch = "";
@@ -1496,9 +1500,22 @@ async function handleAction(el) {
       notify("Task canceled.");
       break;
     case "edit-approval":
-      editingApproval = editingApproval === id ? "" : id;
-      approvalDraft = {};
+      if (editingApproval === id) { editingApproval = ""; delete approvalDrafts[id]; }
+      else { editingApproval = id; approvalDrafts[id] ||= {}; }
       render();
+      break;
+    case "select-approval":
+      selectedApproval = id;
+      editingApproval = Object.keys(approvalDrafts[id] || {}).length ? id : "";
+      render();
+      document.querySelector(`.approval-list [data-id="${CSS.escape(id)}"]`)?.focus();
+      break;
+    case "approval-tab":
+      if (["waiting", "history"].includes(el.dataset.tab)) {
+        approvalTab = el.dataset.tab;
+        render();
+        document.querySelector(`.approval-tabs [data-tab="${approvalTab}"]`)?.focus();
+      }
       break;
     case "decide": {
       const card = el.closest(".approval-card"),
@@ -1521,7 +1538,7 @@ async function handleAction(el) {
         ...(edited ? { arguments: edited } : {}),
       });
       editingApproval = "";
-      approvalDraft = {};
+      delete approvalDrafts[id];
       await refresh();
       notify("Decision saved.");
       break;
@@ -1769,8 +1786,10 @@ document.addEventListener("input", (event) => {
   const el = event.target;
   if (el.id === "home-prompt") composerDraft = el.value;
   // Unsaved approval edits survive the live refresh while a task runs.
-  if (el.matches("[data-arg]"))
-    approvalDraft[el.dataset.arg] = el.type === "checkbox" ? el.checked : el.value;
+  if (el.matches("[data-arg]")) {
+    const id = el.closest(".approval-card")?.dataset.approvalId;
+    if (id) (approvalDrafts[id] ||= {})[el.dataset.arg] = el.type === "checkbox" ? el.checked : el.value;
+  }
   if (el.id === "task-search") {
     taskSearch = el.value;
     document.querySelector("#task-list").innerHTML = filteredTasks();
@@ -1847,7 +1866,7 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       const id = card.querySelector('[data-action="edit-approval"]').dataset.id;
       editingApproval = "";
-      approvalDraft = {};
+      delete approvalDrafts[id];
       render();
       [...document.querySelectorAll(".approval-card")].find((item) =>
         item.querySelector('[data-action="edit-approval"]')?.dataset.id === id)?.focus();

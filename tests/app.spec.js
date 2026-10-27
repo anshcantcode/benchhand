@@ -879,6 +879,8 @@ test("approvals show the exact payload and resume only the selected decision", a
     await page.evaluate(() => window.fixtureState.approvals[0].status),
   ).toBe("rejected");
   await expect(page.getByText("You’re all clear")).toBeVisible();
+  await page.getByRole("button", {name:"History",exact:true}).click();
+  await expect(page.getByText("Rejected", {exact:true})).toBeVisible();
 });
 
 test("approval shortcuts act only on the focused card and protect edited fields", async ({ page }) => {
@@ -901,9 +903,15 @@ test("approval shortcuts act only on the focused card and protect edited fields"
   await field.fill("Unsaved edit");
   await field.press("Control+Enter");
   expect(await page.evaluate(() => window.fixtureState.approvals.map(a => a.status))).toEqual(["pending", "pending"]);
-  await field.press("Escape");
+  await page.locator(".approval-list").getByRole("button", {name:/Action 2/}).click();
+  await second.getByRole("button", {name:"Edit", exact:true}).click();
+  await second.getByRole("textbox", {name:"Message"}).fill("Other draft");
+  await page.locator(".approval-list").getByRole("button", {name:/Action 1/}).click();
+  await expect(first.getByRole("textbox", {name:"Message"})).toHaveValue("Unsaved edit");
+  await first.getByRole("textbox", {name:"Message"}).press("Escape");
   await expect(first).not.toHaveClass(/editing/);
   await expect(first).toBeFocused();
+  await page.locator(".approval-list").getByRole("button", {name:/Action 2/}).click();
   await second.focus();
   await second.press("Control+Enter");
   await expect.poll(() => page.evaluate(() => window.fixtureState.approvals.map(a => a.status))).toEqual(["pending", "approved"]);
