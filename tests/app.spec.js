@@ -16,6 +16,20 @@ test("a fresh workspace starts with one model choice and a usable first task", a
   expect(await page.evaluate(() => window.fixtureState.tasks.length)).toBe(1);
 });
 
+test("Marketplace and Routines load when chosen as the startup page", async ({ page }) => {
+  await nativeFixture(page);
+  for (const [view, heading, command] of [["extensions", "Marketplace", "marketplace_search"], ["schedules", "Routines", "autostart_status"]]) {
+    await page.getByRole("button", {name:"Preferences", exact:true}).click();
+    await page.locator('[data-pref="defaultView"]').selectOption(view);
+    await expect.poll(() => page.evaluate(() => window.fixtureState.settings.defaultView)).toBe(view);
+    await page.reload();
+    await expect(page.getByRole("heading", {name:heading, exact:true})).toBeVisible();
+    await expect.poll(() => page.evaluate((c) => window.commandCalls.filter(x => x.command === c).length, command)).toBe(1);
+    if (view === "extensions") await expect(page.getByRole("heading", {name:"Browser tools", exact:true})).toBeVisible();
+    else await expect(page.getByText("No routines yet", {exact:true})).toBeVisible();
+  }
+});
+
 test("folders connect through the picker, target a task and disconnect without deleting files", async ({ page }) => {
   await nativeFixture(page);
   await page.locator("nav").getByRole("button", {name:"Folders",exact:true}).click();

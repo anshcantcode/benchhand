@@ -148,7 +148,7 @@ fn validate_settings(input: &Value) -> Result<Value, String> {
         ("density", vec!["comfortable", "compact"]),
         ("font", vec!["sans", "mono"]),
         ("background", vec!["glow", "flat"]),
-        ("defaultView", vec!["home", "tasks", "team", "connections"]),
+        ("defaultView", vec!["home", "tasks", "team", "connections", "extensions", "schedules"]),
     ] {
         if !allowed.contains(&settings[key].as_str().unwrap_or("")) {
             return Err(format!("Invalid {key}"));
@@ -959,6 +959,13 @@ mod tests {
         let v = validate_settings(&s).unwrap();
         assert_eq!(v["workspaceName"], "Studio");
         assert!(v.get("token").is_none());
+        for view in ["extensions", "schedules"] {
+            s["defaultView"] = json!(view);
+            assert_eq!(validate_settings(&s).unwrap()["defaultView"], view);
+        }
+        s["defaultView"] = json!("unknown");
+        assert!(validate_settings(&s).is_err());
+        s["defaultView"] = json!("home");
         s["accent"] = json!("url(evil)");
         assert!(validate_settings(&s).is_err());
         s = defaults();
