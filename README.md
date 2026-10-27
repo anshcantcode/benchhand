@@ -56,7 +56,7 @@ benchhand-terminal approvals
 benchhand-terminal approve <approval-id>
 ```
 
-Run `benchhand-terminal` without arguments for an interactive session, or `benchhand-terminal help` for commands. It starts the desktop workspace in the background when needed; a desktop session and unlocked OS credential store are required. On Windows, run it from its install folder or add that folder to PATH. See the [terminal guide](docs/USER_GUIDE.md#use-the-terminal). This feature is on `main` and may not be in the latest release package.
+Run `benchhand-terminal` without arguments for an interactive session, or `benchhand-terminal help` for commands. It starts the desktop workspace in the background when needed; a desktop session and unlocked OS credential store are required. On Windows, run it from its install folder or add that folder to PATH. See the [terminal guide](docs/USER_GUIDE.md#use-the-terminal). The terminal is included in v0.4.3 and later; v0.4.2 does not include it.
 
 ## Models and connections
 

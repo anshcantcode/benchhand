@@ -54,7 +54,7 @@
     ],
     pluginSources: [{ id: "featured", label: "Featured tools" }, { id: "registry", label: "Official MCP Registry" }],
     downloads: [{ id: "d1", model: "llama3.2:3b", state: "downloading", status: "Pulling model layers", completed: 1240000000, total: 2020000000 }],
-    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.2" },
+    device: { os: "windows", arch: "x86_64", threads: 16, version: "0.4.3" },
   };
   // Event text matches what the runtime records, so the Steps list is derived the same way as in the app.
   const run = (start, ...lines) => [{ message: "Task created", createdAt: ago(start + 0.2) }, { message: "Run started", createdAt: ago(start) }, ...lines.map(([m, at]) => ({ message: m, createdAt: ago(at) }))];

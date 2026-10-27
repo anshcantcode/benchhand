@@ -381,7 +381,7 @@ async function nativeFixture(page, { setup = true, connected = true, tools = tru
               os: "windows",
               arch: "x86_64",
               threads: 16,
-              version: "0.4.2",
+              version: "0.4.3",
             },
           };
       const persist = () =>

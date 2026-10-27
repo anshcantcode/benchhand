@@ -4,6 +4,8 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-27
+
 ### Added
 
 - `benchhand-terminal`, a console companion that shares the desktop workspace, task engine and approvals. It can list teammates and tasks, run work, follow activity and review decisions.
@@ -19,7 +21,7 @@ All notable changes to Benchhand are recorded here. The format follows [Keep a C
 
 ### Limits
 
-- These changes are on the development branch and are not included in the v0.4.2 release packages. The terminal requires a desktop session and an unlocked operating system credential store.
+- These changes are not included in the v0.4.2 release packages. The terminal requires a desktop session and an unlocked operating system credential store.
 - Anthropic's native API adapter has automated mock coverage but has not been tested with a live API key in this development environment.
 
 
