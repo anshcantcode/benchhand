@@ -678,6 +678,7 @@ function approvalPreview(a) {
     return `<div class="action-preview"><dl class="preview-fields">${field("Channel", `<code>${esc(argText(x.channel))}</code>`)}</dl><p class="preview-message">${esc(argText(x.text))}</p></div>`;
   if (/^github_create_issue/.test(tool))
     return `<div class="action-preview"><dl class="preview-fields">${field("Repository", `<code>${esc(argText(x.repository))}</code>`)}${field("Title", `<strong>${esc(argText(x.title))}</strong>`)}</dl><article class="markdown preview-message">${markdown(argText(x.body))}</article></div>`;
+  if (tool === "workspace_patch") return `<div class="action-preview"><dl class="preview-fields">${field("Folder", esc(a.target))}${field("File", `<code>${esc(argText(x.path))}</code>`)}</dl><strong>Replace</strong><pre class="file-change-preview">${esc(argText(x.old_text))}</pre><strong>With</strong><pre class="file-change-preview">${esc(argText(x.new_text))}</pre><p class="helper">The original text must still match exactly once when this runs.</p></div>`;
   if (tool === "workspace_write") return `<div class="action-preview"><dl class="preview-fields">${field("Folder", esc(a.target))}${field("File", `<code>${esc(argText(x.path))}</code>`)}</dl><strong>Proposed file content</strong><pre class="file-change-preview">${esc(argText(x.content))}</pre></div>`;
   if (tool.startsWith("computer_"))
     return `<div class="action-preview"><p class="preview-sentence">${esc(computerSentence(tool, x))}</p><p class="helper">Positions run from 0 to 1000 across the display.</p></div>`;

@@ -463,7 +463,7 @@ mod tests {
         let (x, y) = input.location().unwrap();
         assert!(x > 0 && y > 0);
         let result =
-            std::env::temp_dir().join(format!("teammate-native-input-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("benchhand-native-input-{}", uuid::Uuid::new_v4()));
         let mut terminal = std::process::Command::new("xterm")
             .args([
                 "-title",

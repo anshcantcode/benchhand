@@ -898,6 +898,19 @@ test("approval shortcuts act only on the focused card and protect edited fields"
   expect(await page.evaluate(() => window.fixtureState.approvals[0].status)).toBe("pending");
 });
 
+test("file patch approvals show the exact replacement safely", async ({ page }) => {
+  await nativeFixture(page);
+  await page.evaluate(() => {
+    window.fixtureState.approvals.push({id:"patch", taskId:"task-1", title:"Change a local file", target:"Project folder", status:"pending", createdAt:Date.now()/1000, toolName:"workspace_patch", arguments:{path:"src/example.rs",old_text:"<old>",new_text:"<new>"}});
+  });
+  await page.evaluate(() => refresh());
+  await page.locator("nav").getByRole("button", {name:/Approvals/}).click();
+  const card = page.getByRole("group", {name:"Change a local file"});
+  await expect(card).toContainText("src/example.rs");
+  await expect(card.locator(".file-change-preview")).toHaveText(["<old>", "<new>"]);
+  await expect(card.locator(".file-change-preview old, .file-change-preview new")).toHaveCount(0);
+});
+
 test("approvals can be edited before they run and keep the tool contract", async ({
   page,
 }) => {

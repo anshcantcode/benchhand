@@ -54,6 +54,7 @@ pub fn edited_arguments(original: &Value, edited: &Value) -> Result<Value, Strin
 fn tool_label(tool: &Tool) -> String {
     let action = match tool.action.as_str() {
         "workspace_write" => "Save workspace file",
+        "workspace_patch" => "Edit workspace file",
         "workspace_read" => "Read workspace file",
         "workspace_list" => "Browse workspace files",
         "repositories" => "Browse repositories",
@@ -100,9 +101,15 @@ fn tools_for(connections: Vec<Connection>) -> HashMap<String, Tool> {
         ),
         (
             "workspace_write",
-            "Save a UTF-8 text artifact in the teammate workspace. Paths must be relative.",
+            "Request that Benchhand save UTF-8 text at a relative workspace path. Changes to a user-attached folder wait for approval; the tool result confirms whether it was saved.",
             json!({"path":{"type":"string"},"content":{"type":"string"}}),
             vec!["path", "content"],
+        ),
+        (
+            "workspace_patch",
+            "Request one exact text replacement in an existing UTF-8 workspace file. old_text must occur exactly once. Changes to a user-attached folder wait for approval; the tool result confirms whether it was saved.",
+            json!({"path":{"type":"string"},"old_text":{"type":"string"},"new_text":{"type":"string"}}),
+            vec!["path", "old_text", "new_text"],
         ),
         ("team_directory","List teammates, their IDs, roles, and available models before delegating work.",json!({}),vec![]),
         ("delegate_task","Delegate a specific subtask to another teammate. The teammate works with its own model and workspace, and its final result returns to you automatically. Pass all needed context; it cannot read your private workspace. Ancestor loops are forbidden.",json!({"botId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"}}),vec!["botId","title","description"]),
@@ -223,6 +230,21 @@ fn workspace_action(root: &Path, action: &str, args: &Value) -> Result<Value, St
                 return Err("Read files smaller than 1 MB".into());
             }
             Ok(json!({"path":path,"content":fs::read_to_string(target).map_err(db_error)?}))
+        }
+        "workspace_patch" => {
+            let old = args["old_text"].as_str().filter(|s| !s.is_empty()).ok_or("Original text must not be empty")?;
+            let new = args["new_text"].as_str().ok_or("Replacement must be text")?;
+            if fs::metadata(&target).map_err(db_error)?.len() > 1_000_000 {
+                return Err("Edit files smaller than 1 MB".into());
+            }
+            let content = fs::read_to_string(&target).map_err(db_error)?;
+            let first = content.find(old).ok_or("Original text was not found; read the file again before retrying")?;
+            let after_first_char = first + old.chars().next().unwrap().len_utf8();
+            if content[after_first_char..].contains(old) {
+                return Err("Original text must match exactly once; include more context before retrying".into());
+            }
+            let changed = content.replacen(old, new, 1);
+            workspace_action(root, "workspace_write", &json!({"path":path,"content":changed}))
         }
         "workspace_write" => {
             if path.is_empty() {
@@ -388,8 +410,10 @@ pub(crate) async fn run_with(
         .clone()
         .unwrap_or_else(|| state.data_dir.join("workspaces").join(&bot.id));
     if attached_folder.is_some() {
-        if let Some(tool) = tool_map.get_mut("workspace_write") {
-            tool.approval = true;
+        for name in ["workspace_write", "workspace_patch"] {
+            if let Some(tool) = tool_map.get_mut(name) {
+                tool.approval = true;
+            }
         }
     }
     fs::create_dir_all(&root).map_err(db_error)?;
@@ -426,7 +450,7 @@ pub(crate) async fn run_with(
         .map_err(db_error)?;
     if !resume && attached_folder.is_some() {
         let instructions = run.messages[0]["content"].as_str().unwrap_or("");
-        run.messages[0]["content"] = json!(format!("{instructions}\nThe workspace tools operate inside an existing folder chosen by your user. Read relevant files before proposing edits. Writes to this folder require approval. Use relative paths; you cannot access parent folders or links outside this root."));
+        run.messages[0]["content"] = json!(format!("{instructions}\nThe workspace tools operate inside an existing folder chosen by your user. Read relevant files before proposing edits. Use workspace_patch for small exact replacements in existing files. Writes and patches to this folder require approval. Use relative paths; you cannot access parent folders or links outside this root."));
     }
     let max = state.settings()?["maxSteps"].as_u64().unwrap_or(12) as usize;
     loop {
@@ -485,7 +509,7 @@ pub(crate) async fn run_with(
                     if tool.action.starts_with("computer_") {
                         crate::computer::validate(&tool.action, &args)?;
                     }
-                    let target = if tool.action == "workspace_write" {
+                    let target = if matches!(tool.action.as_str(), "workspace_write" | "workspace_patch") {
                         root.display().to_string()
                     } else {
                         tool.connection
@@ -497,7 +521,7 @@ pub(crate) async fn run_with(
                     let title = match tool.action.as_str() {
                         "create_issue" => "Create a GitHub issue",
                         "send_message" => "Send a Slack message",
-                        "workspace_write" => "Change a local file",
+                        "workspace_write" | "workspace_patch" => "Change a local file",
                         action if action.starts_with("computer_") => "Control this computer",
                         _ => "Run an imported tool",
                     };
@@ -971,6 +995,39 @@ mod tests {
             fs::remove_dir_all(dir).unwrap();
         }
     }
+    #[tokio::test]
+    async fn attached_folder_patch_waits_for_approval_and_checks_current_content() {
+        use std::sync::{atomic::{AtomicUsize, Ordering}, Mutex};
+        let step = AtomicUsize::new(0);
+        let server = crate::test_support::MockServer::new(move |_, _, _| {
+            let message = if step.fetch_add(1, Ordering::SeqCst) == 0 {
+                json!({"role":"assistant","content":null,"tool_calls":[{"id":"patch-1","type":"function","function":{"name":"workspace_patch","arguments":"{\"path\":\"file.txt\",\"old_text\":\"before\",\"new_text\":\"after\"}"}}]})
+            } else { json!({"role":"assistant","content":"Done"}) };
+            json!({"choices":[{"message":message}]})
+        });
+        let dir = std::env::temp_dir().join(format!("benchhand-patch-{}", uuid::Uuid::new_v4()));
+        let folder = dir.join("project");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("file.txt"), "before").unwrap();
+        let db = crate::open_database(&dir.join("test.sqlite3")).unwrap();
+        let model = json!({"baseUrl":format!("{}/v1",server.url),"model":"fixture","protocol":"chat","toolMode":"native","hasSecret":false});
+        db.execute("INSERT INTO connections(id,kind,label,config,account,verified_at) VALUES('model','model','Fixture',?1,'fixture',1)",[model.to_string()]).unwrap();
+        db.execute("UPDATE bots SET provider_id='model' WHERE id='research'", []).unwrap();
+        db.execute("INSERT INTO workspace_folders(bot_id,path) VALUES('research',?1)",[folder.to_string_lossy().as_ref()]).unwrap();
+        db.execute("INSERT INTO tasks(id,title,description,bot_id,status,created_at,updated_at) VALUES('test','Edit','Edit file','research','running',1,1)",[]).unwrap();
+        let state = AppState { db: Mutex::new(db), data_dir: dir.clone(), client: reqwest::Client::new(), active: Mutex::new(HashMap::new()), downloads: Mutex::new(HashMap::new()) };
+        run_with(&state, "test", false, None, || {}).await.unwrap();
+        assert_eq!(state.task("test").unwrap().status, "paused");
+        assert_eq!(fs::read_to_string(folder.join("file.txt")).unwrap(), "before");
+        let approval: (String, String) = state.lock().unwrap().query_row("SELECT id,tool_name FROM approvals WHERE task_id='test'", [], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(approval.1, "workspace_patch");
+        state.lock().unwrap().execute("UPDATE approvals SET status='approved' WHERE id=?1", [&approval.0]).unwrap();
+        state.lock().unwrap().execute("UPDATE tasks SET status='running',waiting_approval=0 WHERE id='test'", []).unwrap();
+        run_with(&state, "test", true, None, || {}).await.unwrap();
+        assert_eq!(fs::read_to_string(folder.join("file.txt")).unwrap(), "after");
+        drop(state);
+        fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn edits_keep_the_tool_contract() {
         let original = json!({"channel":"C1","text":"Hello","count":1});
@@ -1002,6 +1059,16 @@ mod tests {
                 ["content"],
             "A useful result"
         );
+        workspace_action(&root, "workspace_patch", &json!({"path":"notes/result.md","old_text":"useful","new_text":"reviewed"})).unwrap();
+        assert_eq!(fs::read_to_string(root.join("notes/result.md")).unwrap(), "A reviewed result");
+        for old in ["missing", "", "e"] {
+            assert!(workspace_action(&root, "workspace_patch", &json!({"path":"notes/result.md","old_text":old,"new_text":"bad"})).is_err());
+        }
+        assert!(workspace_action(&root, "workspace_patch", &json!({"path":"../private","old_text":"a","new_text":"b"})).is_err());
+        fs::write(root.join("notes/overlap.txt"), "aaa").unwrap();
+        assert!(workspace_action(&root, "workspace_patch", &json!({"path":"notes/overlap.txt","old_text":"aa","new_text":"b"})).is_err());
+        assert_eq!(fs::read_to_string(root.join("notes/overlap.txt")).unwrap(), "aaa");
+        assert_eq!(fs::read_to_string(root.join("notes/result.md")).unwrap(), "A reviewed result");
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

@@ -15,7 +15,7 @@ For local models without native function calling, try **Structured actions** in 
 
 ### Work with a local folder
 
-Open **Folders → Add a folder**, choose an assistant, then select a project or notes folder in the system picker. A manual path is available too. Use **Start a task here** to give that assistant work in the folder. It can list and read text files, propose new files or edits, and save after you approve each write. File tools use relative paths inside the selected root; paths and links leading outside it are rejected.
+Open **Folders → Add a folder**, choose an assistant, then select a project or notes folder in the system picker. A manual path is available too. Use **Start a task here** to give that assistant work in the folder. It can list and read text files, propose new files or edits, and save after you approve each write. For a small edit, it can propose an exact text replacement; Benchhand applies it only if the original text still occurs exactly once. File tools use relative paths inside the selected root; paths and links leading outside it are rejected.
 
 One folder is attached per assistant. Stop its running/paused tasks before changing or disconnecting the folder. Disconnecting leaves every file where it is. Tasks record the folder used for their run. Text files are limited to 1 MB and directory lists to 100 entries. This does not grant shell execution or sandbox independent MCP/native tools. Relevant file contents go to the model you choose, including a cloud provider or signed-in cloud CLI when selected.
 
