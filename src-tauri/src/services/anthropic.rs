@@ -109,6 +109,7 @@ fn push_tool_result(history: &mut Vec<Value>, result: Value) {
 struct StreamState {
     blocks: Vec<Value>,
     inputs: Vec<String>,
+    texts: Vec<String>,
     closed: Vec<bool>,
     stop_reason: Option<String>,
     usage: Value,
@@ -136,6 +137,8 @@ impl StreamState {
                 if let Some(text) = block["text"].as_str().filter(|s| !s.is_empty()) {
                     observe("model_output", text);
                 }
+                self.texts
+                    .push(block["text"].as_str().unwrap_or("").to_owned());
                 self.blocks.push(block);
                 self.inputs.push(String::new());
                 self.closed.push(false);
@@ -156,8 +159,7 @@ impl StreamState {
                         let text = value["delta"]["text"]
                             .as_str()
                             .ok_or("Invalid model text")?;
-                        block["text"] =
-                            json!(format!("{}{text}", block["text"].as_str().unwrap_or("")));
+                        self.texts[index].push_str(text);
                         observe("model_output", text);
                     }
                     (Some("tool_use"), Some("input_json_delta")) => self.inputs[index].push_str(
@@ -182,6 +184,9 @@ impl StreamState {
                 if block["type"] == "tool_use" && !self.inputs[index].is_empty() {
                     block["input"] = serde_json::from_str(&self.inputs[index])
                         .map_err(|_| "The model returned incomplete tool input")?;
+                }
+                if block["type"] == "text" {
+                    block["text"] = json!(std::mem::take(&mut self.texts[index]));
                 }
                 self.closed[index] = true;
             }
