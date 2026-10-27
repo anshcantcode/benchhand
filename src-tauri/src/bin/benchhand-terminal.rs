@@ -106,6 +106,35 @@ impl Client {
     }
 }
 
+async fn print_activity(
+    client: &Client,
+    id: &str,
+    cursor: &mut i64,
+    detailed: bool,
+) -> Result<(), String> {
+    loop {
+        let page = client
+            .get(&format!("/v1/tasks/{id}/events/after/{cursor}"))
+            .await?;
+        let items = page["events"].as_array().ok_or("Invalid activity list")?;
+        for item in items {
+            let next = item["id"]
+                .as_i64()
+                .filter(|id| *id > *cursor)
+                .ok_or("Invalid activity cursor")?;
+            if detailed {
+                println!("{}\n", event(text(item, "message"), true));
+            } else {
+                println!("  {}", event(text(item, "message"), false));
+            }
+            *cursor = next;
+        }
+        if items.len() < 200 {
+            return Ok(());
+        }
+    }
+}
+
 async fn connect_or_start() -> Result<Client, String> {
     if let Ok(client) = Client::connect() {
         if tokio::time::timeout(Duration::from_secs(1), client.get("/v1/summary"))
@@ -268,10 +297,7 @@ async fn execute(client: &Client, line: &str) -> Result<bool, String> {
         }
         "activity" => {
             let id = identifier(argument)?;
-            let events = client.get(&format!("/v1/tasks/{id}/events")).await?;
-            for item in events["events"].as_array().into_iter().flatten() {
-                println!("{}\n", event(text(item, "message"), true));
-            }
+            print_activity(client, id, &mut 0, true).await?;
         }
         "approvals" => {
             let summary = client.get("/v1/summary").await?;
@@ -319,17 +345,13 @@ async fn execute(client: &Client, line: &str) -> Result<bool, String> {
             println!(
                 "Started {id}. The task keeps running in Benchhand if you leave this terminal."
             );
-            let mut seen = 0;
+            let mut cursor = 0;
             loop {
-                let events = client.get(&format!("/v1/tasks/{id}/events")).await?;
-                if let Some(items) = events["events"].as_array() {
-                    for item in items.iter().skip(seen) {
-                        println!("  {}", event(text(item, "message"), false));
-                    }
-                    seen = items.len();
-                }
+                print_activity(client, id, &mut cursor, false).await?;
                 let task = client.get(&format!("/v1/tasks/{id}")).await?;
                 if text(&task, "status") != "running" {
+                    // Include events recorded between the last page and the final task state.
+                    print_activity(client, id, &mut cursor, false).await?;
                     show_task(&task);
                     if matches!(text(&task, "status"), "failed" | "canceled") {
                         return Err("The task did not complete.".into());
